@@ -52,7 +52,7 @@ function parseFile(file: File): Promise<Row[]> {
           reject(err);
         }
       };
-      reader.onerror = () => reject(new Error("Gagal membaca file XLSX"));
+      reader.onerror = () => reject(new Error("Failed to read XLSX file"));
       reader.readAsArrayBuffer(file);
     } else {
       const reader = new FileReader();
@@ -82,7 +82,7 @@ function parseFile(file: File): Promise<Row[]> {
           reject(err);
         }
       };
-      reader.onerror = () => reject(new Error("Gagal membaca file CSV"));
+      reader.onerror = () => reject(new Error("Failed to read CSV file"));
       reader.readAsText(file);
     }
   });
@@ -133,7 +133,7 @@ function processData(
   const poSkuCol = findColumn(poHeaders, ["Item", "SKU", "item", "sku"]);
   if (!poSkuCol)
     throw new Error(
-      "Kolom SKU tidak ditemukan di file PO (cari: Item / SKU)."
+      "SKU column not found in PO file (expected: Item / SKU)."
     );
 
   const poDateCol = findColumn(poHeaders, [
@@ -143,7 +143,7 @@ function processData(
     "receipt date",
   ]);
   if (!poDateCol)
-    throw new Error("Kolom Receipt date tidak ditemukan di file PO.");
+    throw new Error("Receipt date column not found in PO file.");
 
   const poOrderCol = findColumn(poHeaders, [
     "Order number",
@@ -161,12 +161,12 @@ function processData(
   ]);
   if (!prodSkuCol)
     throw new Error(
-      "Kolom SKU tidak ditemukan di file Products (cari: Variant SKU / SKU)."
+      "SKU column not found in Products file (expected: Variant SKU / SKU)."
     );
 
   const prodTitleCol = findColumn(prodHeaders, ["Title", "title"]);
   if (!prodTitleCol)
-    throw new Error("Kolom Title tidak ditemukan di file Products.");
+    throw new Error("Title column not found in Products file.");
 
   // 1. Drop PO rows without SKU
   let po = poRows.filter((r) => {
@@ -255,16 +255,16 @@ export default function Home() {
     setResult(null);
 
     if (!poFile) {
-      setError("Pilih file Purchase Order terlebih dahulu.");
+      setError("Please select a Purchase Order file first.");
       return;
     }
     if (!prodFile) {
-      setError("Pilih file Products terlebih dahulu.");
+      setError("Please select a Products file first.");
       return;
     }
 
     setProcessing(true);
-    setStatus("Membaca file...");
+    setStatus("Reading files...");
 
     try {
       const [poRows, prodRows] = await Promise.all([
@@ -273,22 +273,22 @@ export default function Home() {
       ]);
 
       if (poRows.length === 0)
-        throw new Error("File PO kosong atau tidak bisa di-parse.");
+        throw new Error("PO file is empty or could not be parsed.");
       if (prodRows.length === 0)
-        throw new Error("File Products kosong atau tidak bisa di-parse.");
+        throw new Error("Products file is empty or could not be parsed.");
 
       setStatus(
-        `PO: ${poRows.length} baris, Products: ${prodRows.length} baris. Memproses...`
+        `PO: ${poRows.length} rows, Products: ${prodRows.length} rows. Processing...`
       );
 
       const { result: rows, matched } = processData(poRows, prodRows, cutoffDate);
 
       if (rows.length === 0) {
-        throw new Error("Tidak ada SKU yang cocok antara PO dan Products.");
+        throw new Error("No matching SKU found between PO and Products.");
       }
 
       // Build Excel
-      setStatus("Membuat file Excel...");
+      setStatus("Generating Excel file...");
       const ws = XLSX.utils.json_to_sheet(rows);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Products with ETA");
@@ -300,7 +300,7 @@ export default function Home() {
 
       setResult({ matched });
       setStatus(
-        `Selesai! ${matched} SKU berhasil di-match dan di-download.`
+        `Done! ${matched} SKUs were matched and downloaded successfully.`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -341,8 +341,8 @@ export default function Home() {
             ETA Product Matcher
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Upload Purchase Order &amp; Products Shopify, download hasil dengan
-            ETA
+            Upload Purchase Order &amp; Shopify Products, then download the
+            result with ETA
           </p>
         </div>
 
@@ -413,14 +413,15 @@ export default function Home() {
           {/* Cutoff Date */}
           <div>
             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
-              Receipt Date mulai dari
+              Receipt Date starting from
               <span className="font-normal text-slate-400 dark:text-slate-500 ml-1">
-                (hapus data sebelum tanggal ini)
+                (remove data before this date)
               </span>
             </label>
             <input
               type="date"
               value={cutoffDate}
+              suppressHydrationWarning
               onChange={(e) => {
                 setCutoffDate(e.target.value);
                 setResult(null);
@@ -428,7 +429,7 @@ export default function Home() {
               className="block w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors"
             />
             <span className="block mt-1.5 text-xs text-slate-400">
-              Default: hari ini ({dayjs().format("DD/MM/YYYY")})
+              Default: today ({dayjs().format("DD/MM/YYYY")})
             </span>
           </div>
 
@@ -449,8 +450,8 @@ export default function Home() {
                 />
               </svg>
               <p className="text-xs text-amber-700 dark:text-amber-300">
-                File berukuran besar terdeteksi. Proses di browser bisa lambat
-                atau kehabisan memori untuk file &gt;10 MB.
+                Large files detected. Browser processing can be slow or run out
+                of memory for files larger than 10 MB.
               </p>
             </div>
           )}
@@ -488,7 +489,7 @@ export default function Home() {
                       d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                   </svg>
-                  Memproses…
+                    Processing...
                 </>
               ) : (
                 <>
@@ -597,7 +598,7 @@ export default function Home() {
 
         {/* Footer */}
         <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
-          Semua pemrosesan dilakukan di browser. Tidak ada data yang dikirim ke
+          All processing happens in your browser. No data is sent to the
           server.
         </p>
       </div>

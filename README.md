@@ -1,8 +1,8 @@
 # ETA Product Matcher
 
-Aplikasi Next.js (TypeScript) sederhana untuk mencocokkan **Purchase Order** dengan **Products Shopify** dan menghasilkan file Excel `products_with_eta.xlsx` berisi kolom ETA.
+A simple Next.js (TypeScript) app to match **Purchase Order** data with **Shopify Products** and generate an Excel file `products_with_eta.xlsx` containing an ETA column.
 
-Semua pemrosesan dilakukan di **browser** — tidak ada data yang dikirim ke server.
+All processing is done in the **browser** - no data is sent to the server.
 
 ## Install
 
@@ -10,9 +10,9 @@ Semua pemrosesan dilakukan di **browser** — tidak ada data yang dikirim ke ser
 npm install
 ```
 
-Dependencies utama yang digunakan: `papaparse`, `dayjs`, `lodash`, `xlsx`, `file-saver`.
+Main dependencies: `papaparse`, `dayjs`, `lodash`, `xlsx`, `file-saver`.
 
-## Menjalankan
+## Run
 
 ```bash
 npm run dev
@@ -20,20 +20,20 @@ npm run dev
 
 Buka [http://localhost:3000](http://localhost:3000).
 
-## Cara Pakai
+## How To Use
 
-1. Upload file **Purchase Order** (CSV atau XLSX) — harus memiliki kolom `Item` / `SKU` dan `Receipt date`.
-2. Upload file **Products Shopify** (CSV atau XLSX) — harus memiliki kolom `Variant SKU` / `SKU`.
-3. Klik **Process & Download**.
-4. File `products_with_eta.xlsx` akan otomatis ter-download.
+1. Upload a **Purchase Order** file (CSV or XLSX) - it must contain `Item` / `SKU` and `Receipt date` columns.
+2. Upload a **Shopify Products** file (CSV or XLSX) - it must contain a `Variant SKU` / `SKU` column.
+3. Click **Process & Download**.
+4. The `products_with_eta.xlsx` file will be downloaded automatically.
 
-## Logika Pemrosesan
+## Processing Logic
 
-1. Hapus baris PO tanpa SKU.
-2. Parse `Receipt date` (mendukung `DD/MM/YYYY`, `YYYY-MM-DD`, dll).
-3. Filter: hanya baris PO dengan `Receipt date` >= hari ini.
-4. Sort by `Receipt date` ascending, lalu `Order number`.
-5. Group by SKU, ambil baris pertama → ETA terdekat.
-6. Inner-join dengan Products pada SKU.
-7. Format kolom `ETA` ke `DD/MM/YYYY`.
-8. Export ke Excel.
+1. Remove PO rows without SKU.
+2. Parse `Receipt date` (supports `DD/MM/YYYY`, `YYYY-MM-DD`, etc.).
+3. Filter: keep only PO rows with `Receipt date` >= today.
+4. Sort by `Receipt date` ascending, then by `Order number`.
+5. Group by SKU and take the first row -> nearest ETA.
+6. Inner-join with Products by SKU.
+7. Format `ETA` to `DD/MM/YYYY`.
+8. Export to Excel.
