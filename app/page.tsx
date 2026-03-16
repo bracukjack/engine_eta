@@ -122,7 +122,8 @@ function parseDate(value: unknown): dayjs.Dayjs | null {
 /* ------------------------------------------------------------------ */
 function processData(
   poRows: Row[],
-  productRows: Row[]
+  productRows: Row[],
+  cutoffDate: string
 ): { result: Row[]; matched: number } {
   const poHeaders = poRows.length > 0 ? Object.keys(poRows[0]) : [];
   const prodHeaders =
@@ -186,11 +187,13 @@ function processData(
       (r as Row & { __parsed_date: dayjs.Dayjs | null }).__parsed_date !== null
   );
 
-  // 3. Filter Receipt date >= today
-  const today = dayjs().startOf("day");
+  // 3. Filter Receipt date >= cutoff date
+  const cutoff = cutoffDate
+    ? dayjs(cutoffDate).startOf("day")
+    : dayjs().startOf("day");
   po = po.filter((r) => {
     const d = (r as Row & { __parsed_date: dayjs.Dayjs }).__parsed_date;
-    return d.isSame(today, "day") || d.isAfter(today, "day");
+    return d.isSame(cutoff, "day") || d.isAfter(cutoff, "day");
   });
 
   // 4. Sort by Receipt date asc, then Order number
@@ -235,6 +238,9 @@ function processData(
 export default function Home() {
   const [poFile, setPoFile] = useState<File | null>(null);
   const [prodFile, setProdFile] = useState<File | null>(null);
+  const [cutoffDate, setCutoffDate] = useState<string>(
+    dayjs().format("YYYY-MM-DD")
+  );
   const [status, setStatus] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [result, setResult] = useState<ProcessResult | null>(null);
@@ -275,7 +281,7 @@ export default function Home() {
         `PO: ${poRows.length} baris, Products: ${prodRows.length} baris. Memproses...`
       );
 
-      const { result: rows, matched } = processData(poRows, prodRows);
+      const { result: rows, matched } = processData(poRows, prodRows, cutoffDate);
 
       if (rows.length === 0) {
         throw new Error("Tidak ada SKU yang cocok antara PO dan Products.");
@@ -302,11 +308,12 @@ export default function Home() {
     } finally {
       setProcessing(false);
     }
-  }, [poFile, prodFile]);
+  }, [poFile, prodFile, cutoffDate]);
 
   const resetAll = () => {
     setPoFile(null);
     setProdFile(null);
+    setCutoffDate(dayjs().format("YYYY-MM-DD"));
     setStatus("");
     setError("");
     setResult(null);
@@ -401,6 +408,28 @@ export default function Home() {
                 {prodFile.name} ({(prodFile.size / 1024).toFixed(1)} KB)
               </span>
             )}
+          </div>
+
+          {/* Cutoff Date */}
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-2">
+              Receipt Date mulai dari
+              <span className="font-normal text-slate-400 dark:text-slate-500 ml-1">
+                (hapus data sebelum tanggal ini)
+              </span>
+            </label>
+            <input
+              type="date"
+              value={cutoffDate}
+              onChange={(e) => {
+                setCutoffDate(e.target.value);
+                setResult(null);
+              }}
+              className="block w-full rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 px-4 py-2.5 text-sm text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-colors"
+            />
+            <span className="block mt-1.5 text-xs text-slate-400">
+              Default: hari ini ({dayjs().format("DD/MM/YYYY")})
+            </span>
           </div>
 
           {/* Large file warning */}
