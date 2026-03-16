@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ETA Product Matcher
 
-## Getting Started
+Aplikasi Next.js (TypeScript) sederhana untuk mencocokkan **Purchase Order** dengan **Products Shopify** dan menghasilkan file Excel `products_with_eta.xlsx` berisi kolom ETA.
 
-First, run the development server:
+Semua pemrosesan dilakukan di **browser** — tidak ada data yang dikirim ke server.
+
+## Install
+
+```bash
+npm install
+```
+
+Dependencies utama yang digunakan: `papaparse`, `dayjs`, `lodash`, `xlsx`, `file-saver`.
+
+## Menjalankan
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Buka [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Cara Pakai
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Upload file **Purchase Order** (CSV atau XLSX) — harus memiliki kolom `Item` / `SKU` dan `Receipt date`.
+2. Upload file **Products Shopify** (CSV atau XLSX) — harus memiliki kolom `Variant SKU` / `SKU`.
+3. Klik **Process & Download**.
+4. File `products_with_eta.xlsx` akan otomatis ter-download.
 
-## Learn More
+## Logika Pemrosesan
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. Hapus baris PO tanpa SKU.
+2. Parse `Receipt date` (mendukung `DD/MM/YYYY`, `YYYY-MM-DD`, dll).
+3. Filter: hanya baris PO dengan `Receipt date` >= hari ini.
+4. Sort by `Receipt date` ascending, lalu `Order number`.
+5. Group by SKU, ambil baris pertama → ETA terdekat.
+6. Inner-join dengan Products pada SKU.
+7. Format kolom `ETA` ke `DD/MM/YYYY`.
+8. Export ke Excel.
