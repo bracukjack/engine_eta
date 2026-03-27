@@ -83,6 +83,11 @@ export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
   "Cost per item",
 ]);
 
+export const INTEGER_OUTPUT_COLUMNS: Set<keyof OutputRow> = new Set([
+  "Variant Quantity",
+  "PlannedInStock",
+]);
+
 export type TableSize = "S" | "M" | "L";
 
 export const TABLE_SIZE_CONFIG: Record<TableSize, { rowHeight: number; fontSize: string; cellPadding: string }> = {
@@ -92,6 +97,30 @@ export const TABLE_SIZE_CONFIG: Record<TableSize, { rowHeight: number; fontSize:
 };
 
 export type ExportRowLimit = "all" | 10 | 20 | 50 | 100 | "custom";
+
+// ── Preview ──────────────────────────────────────────────────────────────────
+
+export interface PreviewData {
+  filename: string;
+  headers: string[];
+  rows: string[][];
+  totalRows: number;
+  encoding: string;
+  separator: string;
+  error?: string;
+}
+
+export const HIGHLIGHTED_PREVIEW_COLUMNS: Record<FileKey, Set<string>> = {
+  shopify: new Set([
+    "Variant SKU", "Variant Inventory Qty", "Variant Price",
+    "Variant Compare At Price", "Cost per item", "Status",
+    "ETA (product.metafields.custom.eta)",
+  ]),
+  sales: new Set(["Item", "Reference", "Order date", "Order status"]),
+  stock: new Set(["ItemCode", "PlannedInStock"]),
+  purchase: new Set(["Item", "Receipt date"]),
+  items: new Set(["Code", "SalesPrice", "Extra field:  Retail Price EUR", "Class_09Description"]),
+};
 
 export const FILE_SLOTS_CONFIG: { key: FileKey; label: string; hint: string }[] = [
   { key: "shopify", label: "Shopify Export", hint: "export-shopify.csv" },

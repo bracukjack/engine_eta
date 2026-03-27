@@ -9,9 +9,10 @@ const ctx = self as unknown as WorkerSelf;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** European number format: "1.234,56" → 1234.56 */
+/** European number format: "1.234,56" → 1234.56. Already-numeric values are returned as-is. */
 function parseNum(val: unknown): number | null {
   if (val === null || val === undefined || val === "") return null;
+  if (typeof val === "number") return isNaN(val) ? null : val;
   const s = String(val).trim();
   if (s === "") return null;
   const cleaned = s.replace(/\./g, "").replace(",", ".");
@@ -177,9 +178,10 @@ ctx.onmessage = (e: MessageEvent) => {
 
       const sku = String(skuRaw).trim();
       const qtyRaw = row["Variant Inventory Qty"];
-      const qty =
-        typeof qtyRaw === "number" ? qtyRaw : parseFloat(String(qtyRaw)) || 0;
-      const planned = plannedMap.get(sku) ?? 0;
+      const qty = Math.round(
+        typeof qtyRaw === "number" ? qtyRaw : parseFloat(String(qtyRaw)) || 0
+      );
+      const planned = Math.round(plannedMap.get(sku) ?? 0);
 
       // GOAL 1 — Status
       let status: "active" | "draft";

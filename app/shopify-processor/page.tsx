@@ -3,11 +3,12 @@
 import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { useAppStore } from "@/lib/store";
 import type { FileKey, OutputRow, WorkerResponse } from "@/lib/types";
-import { OUTPUT_COLUMNS, PRICE_COLUMNS } from "@/lib/types";
-import { parseFileBuffer, getXLSX } from "@/lib/parsers";
-import { formatPrice } from "@/lib/utils";
+import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS } from "@/lib/types";
+import { parseFileBuffer, previewFileBuffer, getXLSX } from "@/lib/parsers";
+import { formatPrice, formatInteger } from "@/lib/utils";
 import { FileDropzone } from "@/components/file-dropzone/file-dropzone";
 import { DataTable } from "@/components/data-table/data-table";
+import { PreviewTable } from "@/components/preview-table/preview-table";
 import { StatChip } from "@/components/status-badge/status-badge";
 import { ColumnToggle } from "@/components/column-toggle/column-toggle";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,11 @@ export default function ShopifyProcessorPage() {
   const customRowLimit = useAppStore((s) => s.customRowLimit);
   const setExportRowLimit = useAppStore((s) => s.setExportRowLimit);
   const setCustomRowLimit = useAppStore((s) => s.setCustomRowLimit);
+
+  const previewData = useAppStore((s) => s.previewData);
+  const previewTab = useAppStore((s) => s.previewTab);
+  const setPreviewData = useAppStore((s) => s.setPreviewData);
+  const setPreviewTab = useAppStore((s) => s.setPreviewTab);
 
   const allReady = useAppStore((s) => s.allFilesReady);
   const canRun = allReady() && processingState !== "processing";
@@ -148,6 +154,8 @@ export default function ShopifyProcessorPage() {
       for (const key of visibleColumns) {
         if (PRICE_COLUMNS.has(key)) {
           obj[key] = formatPrice(row[key] as number | null) || null;
+        } else if (INTEGER_OUTPUT_COLUMNS.has(key)) {
+          obj[key] = formatInteger(row[key] as number | null) || null;
         } else {
           obj[key] = row[key];
         }
@@ -198,6 +206,46 @@ export default function ShopifyProcessorPage() {
     () => FILE_KEYS.filter((k) => files[k].status === "ready").length,
     [files]
   );
+
+  // Read preview data when files are uploaded / removed
+  const prevFilesRef = useRef<Record<FileKey, string | null>>({
+    shopify: null, sales: null, stock: null, purchase: null, items: null,
+  });
+
+  useEffect(() => {
+    for (const key of FILE_KEYS) {
+      const file = files[key].file;
+      const prevName = prevFilesRef.current[key];
+      const curName = file?.name ?? null;
+
+      if (curName === prevName) continue;
+      prevFilesRef.current[key] = curName;
+
+      if (!file) {
+        setPreviewData(key, null);
+        if (previewTab === key) {
+          const next = FILE_KEYS.find((k) => k !== key && previewData[k] !== null);
+          setPreviewTab(next ?? null);
+        }
+        continue;
+      }
+
+      (async () => {
+        try {
+          const buf = await file.arrayBuffer();
+          const data = await previewFileBuffer(buf, file.name);
+          setPreviewData(key, data);
+          if (!previewTab) setPreviewTab(key);
+        } catch {
+          setPreviewData(key, {
+            filename: file.name, headers: [], rows: [], totalRows: 0,
+            encoding: "unknown", separator: "unknown", error: "Failed to read file",
+          });
+        }
+      })();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [files]);
 
   return (
     <div className="flex flex-col h-full">
@@ -311,92 +359,163 @@ export default function ShopifyProcessorPage() {
 
         {/* Right panel: Data table + filters */}
         <div className="flex-1 flex flex-col min-w-0">
-          {/* Filter bar */}
-          {results.length > 0 && (
-            <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-edge bg-surface/50 flex-wrap">
-              <span className="text-[11px] text-muted uppercase tracking-wider font-semibold">
-                Filters
-              </span>
-              <FilterSelect
-                label="Status"
-                value={statusFilter}
-                options={[
-                  { value: "all", label: "All" },
-                  { value: "active", label: "Active" },
-                  { value: "draft", label: "Draft" },
-                ]}
-                onChange={(v) => setStatusFilter(v as "all" | "active" | "draft")}
-              />
-              <FilterSelect
-                label="ETA"
-                value={etaFilter}
-                options={[
-                  { value: "all", label: "All" },
-                  { value: "yes", label: "Yes" },
-                  { value: "no", label: "No" },
-                ]}
-                onChange={(v) => setEtaFilter(v as "all" | "yes" | "no")}
-              />
-              <FilterSelect
-                label="Discount"
-                value={discountFilter}
-                options={[
-                  { value: "all", label: "All" },
-                  { value: "yes", label: "Yes" },
-                  { value: "no", label: "No" },
-                ]}
-                onChange={(v) => setDiscountFilter(v as "all" | "yes" | "no")}
-              />
-              <FilterSelect
-                label="Policy"
-                value={policyFilter}
-                options={[
-                  { value: "all", label: "All" },
-                  { value: "continue", label: "Continue" },
-                  { value: "deny", label: "Deny" },
-                ]}
-                onChange={(v) => setPolicyFilter(v as "all" | "continue" | "deny")}
-              />
-
-              {/* Active filter chips */}
-              {isFiltered && (
-                <div className="flex items-center gap-1.5 ml-2">
-                  {statusFilter !== "all" && (
-                    <FilterChip
-                      label={`Status: ${statusFilter}`}
-                      onRemove={() => setStatusFilter("all")}
-                    />
-                  )}
-                  {etaFilter !== "all" && (
-                    <FilterChip
-                      label={`ETA: ${etaFilter}`}
-                      onRemove={() => setEtaFilter("all")}
-                    />
-                  )}
-                  {discountFilter !== "all" && (
-                    <FilterChip
-                      label={`Discount: ${discountFilter}`}
-                      onRemove={() => setDiscountFilter("all")}
-                    />
-                  )}
-                  {policyFilter !== "all" && (
-                    <FilterChip
-                      label={`Policy: ${policyFilter}`}
-                      onRemove={() => setPolicyFilter("all")}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Table */}
-          <DataTable />
+          {/* Output / Preview tabs */}
+          <RightPanel
+            isFiltered={isFiltered}
+            statusFilter={statusFilter}
+            etaFilter={etaFilter}
+            discountFilter={discountFilter}
+            policyFilter={policyFilter}
+            setStatusFilter={setStatusFilter}
+            setEtaFilter={setEtaFilter}
+            setDiscountFilter={setDiscountFilter}
+            setPolicyFilter={setPolicyFilter}
+          />
         </div>
       </div>
     </div>
   );
 }
+
+function RightPanel({
+  isFiltered,
+  statusFilter,
+  etaFilter,
+  discountFilter,
+  policyFilter,
+  setStatusFilter,
+  setEtaFilter,
+  setDiscountFilter,
+  setPolicyFilter,
+}: {
+  isFiltered: boolean;
+  statusFilter: string;
+  etaFilter: string;
+  discountFilter: string;
+  policyFilter: string;
+  setStatusFilter: (v: "all" | "active" | "draft") => void;
+  setEtaFilter: (v: "all" | "yes" | "no") => void;
+  setDiscountFilter: (v: "all" | "yes" | "no") => void;
+  setPolicyFilter: (v: "all" | "continue" | "deny") => void;
+}) {
+  const [tab, setTab] = useState<"output" | "preview">("output");
+  const previewData = useAppStore((s) => s.previewData);
+  const results = useAppStore((s) => s.results);
+  const hasPreview = Object.values(previewData).some((d) => d !== null);
+
+  return (
+    <>
+      {/* Tab bar */}
+      <div className="shrink-0 flex items-center border-b border-edge bg-surface/50">
+        <button
+          onClick={() => setTab("output")}
+          className={`px-4 py-2 text-[11px] font-semibold cursor-pointer transition-colors border-b-2 ${
+            tab === "output"
+              ? "border-accent text-primary bg-white"
+              : "border-transparent text-muted hover:bg-slate-50"
+          }`}
+        >
+          Output
+          {results.length > 0 && (
+            <span className="ml-1.5 text-[9px] font-mono text-accent bg-accent/10 rounded px-1">
+              {results.length}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => { if (hasPreview) setTab("preview"); }}
+          className={`px-4 py-2 text-[11px] font-semibold cursor-pointer transition-colors border-b-2 ${
+            tab === "preview"
+              ? "border-accent text-primary bg-white"
+              : "border-transparent text-muted hover:bg-slate-50"
+          } ${!hasPreview ? "opacity-40 pointer-events-none" : ""}`}
+        >
+          Preview
+          {hasPreview && (
+            <span className="ml-1.5 text-[9px] font-mono text-accent bg-accent/10 rounded px-1">
+              {Object.values(previewData).filter((d) => d !== null).length}
+            </span>
+          )}
+        </button>
+
+      </div>
+
+      {/* Filter bar — below tabs, only on Output tab */}
+      {tab === "output" && results.length > 0 && (
+        <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-edge bg-surface/50 flex-wrap">
+          <span className="text-[11px] text-muted uppercase tracking-wider font-semibold">Filters</span>
+          <FilterSelect
+            label="Status"
+            value={statusFilter}
+            options={[
+              { value: "all", label: "All" },
+              { value: "active", label: "Active" },
+              { value: "draft", label: "Draft" },
+            ]}
+            onChange={(v) => setStatusFilter(v as "all" | "active" | "draft")}
+          />
+          <FilterSelect
+            label="ETA"
+            value={etaFilter}
+            options={[
+              { value: "all", label: "All" },
+              { value: "yes", label: "Yes" },
+              { value: "no", label: "No" },
+            ]}
+            onChange={(v) => setEtaFilter(v as "all" | "yes" | "no")}
+          />
+          <FilterSelect
+            label="Discount"
+            value={discountFilter}
+            options={[
+              { value: "all", label: "All" },
+              { value: "yes", label: "Yes" },
+              { value: "no", label: "No" },
+            ]}
+            onChange={(v) => setDiscountFilter(v as "all" | "yes" | "no")}
+          />
+          <FilterSelect
+            label="Policy"
+            value={policyFilter}
+            options={[
+              { value: "all", label: "All" },
+              { value: "continue", label: "Continue" },
+              { value: "deny", label: "Deny" },
+            ]}
+            onChange={(v) => setPolicyFilter(v as "all" | "continue" | "deny")}
+          />
+          {isFiltered && (
+            <div className="flex items-center gap-1.5">
+              {statusFilter !== "all" && (
+                <FilterChip label={`Status: ${statusFilter}`} onRemove={() => setStatusFilter("all")} />
+              )}
+              {etaFilter !== "all" && (
+                <FilterChip label={`ETA: ${etaFilter}`} onRemove={() => setEtaFilter("all")} />
+              )}
+              {discountFilter !== "all" && (
+                <FilterChip label={`Discount: ${discountFilter}`} onRemove={() => setDiscountFilter("all")} />
+              )}
+              {policyFilter !== "all" && (
+                <FilterChip label={`Policy: ${policyFilter}`} onRemove={() => setPolicyFilter("all")} />
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Content */}
+      {tab === "output" ? (
+        <DataTable />
+      ) : (
+        <div className="flex-1 min-h-0">
+          <PreviewTable />
+        </div>
+      )}
+    </>
+  );
+}
+
+function LeftPanel() { return null; }
 
 function FilterSelect({
   label,

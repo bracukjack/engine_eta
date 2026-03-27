@@ -2,9 +2,9 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { FixedSizeList as List } from "react-window";
-import { cn, formatPrice } from "@/lib/utils";
+import { cn, formatPrice, formatInteger } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
-import { OUTPUT_COLUMNS, PRICE_COLUMNS, TABLE_SIZE_CONFIG, type OutputRow } from "@/lib/types";
+import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS, TABLE_SIZE_CONFIG, type OutputRow } from "@/lib/types";
 import { StatusBadge, PolicyBadge } from "@/components/status-badge/status-badge";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
@@ -21,6 +21,10 @@ function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value
   if (PRICE_COLUMNS.has(column)) {
     const formatted = formatPrice(value as number | null);
     return formatted ? <span className="font-mono" style={{ fontSize }}>{formatted}</span> : <span className="text-muted/50">—</span>;
+  }
+  if (INTEGER_OUTPUT_COLUMNS.has(column)) {
+    const formatted = formatInteger(value as number | null);
+    return formatted !== "" ? <span className="font-mono" style={{ fontSize }}>{formatted}</span> : <span className="text-muted/50">—</span>;
   }
   if (typeof value === "number") {
     return <span className="font-mono" style={{ fontSize }}>{value}</span>;

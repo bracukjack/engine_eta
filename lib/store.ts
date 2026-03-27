@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { FileKey, OutputRow, Summary, TableSize, ExportRowLimit } from "./types";
+import type { FileKey, OutputRow, Summary, TableSize, ExportRowLimit, PreviewData } from "./types";
 import { OUTPUT_COLUMNS } from "./types";
 
 interface FileSlotState {
@@ -60,6 +60,16 @@ interface AppStore {
   customRowLimit: number;
   setExportRowLimit: (l: ExportRowLimit) => void;
   setCustomRowLimit: (n: number) => void;
+
+  // ── Preview ────────────────────────────────────────────────────────
+  previewData: Record<FileKey, PreviewData | null>;
+  previewTab: FileKey | null;
+  previewRowLimit: number;
+  previewSearch: string;
+  setPreviewData: (key: FileKey, data: PreviewData | null) => void;
+  setPreviewTab: (key: FileKey | null) => void;
+  setPreviewRowLimit: (n: number) => void;
+  setPreviewSearch: (s: string) => void;
 
   // ── Sidebar ────────────────────────────────────────────────────────
   sidebarCollapsed: boolean;
@@ -146,6 +156,17 @@ export const useAppStore = create<AppStore>((set, get) => ({
   customRowLimit: 50,
   setExportRowLimit: (l) => set({ exportRowLimit: l }),
   setCustomRowLimit: (n) => set({ customRowLimit: n }),
+
+  // Preview
+  previewData: { shopify: null, sales: null, stock: null, purchase: null, items: null },
+  previewTab: null,
+  previewRowLimit: 100,
+  previewSearch: "",
+  setPreviewData: (key, data) =>
+    set((s) => ({ previewData: { ...s.previewData, [key]: data } })),
+  setPreviewTab: (key) => set({ previewTab: key }),
+  setPreviewRowLimit: (n) => set({ previewRowLimit: n }),
+  setPreviewSearch: (s) => set({ previewSearch: s }),
 
   // Sidebar
   sidebarCollapsed: false,
