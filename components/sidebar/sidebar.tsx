@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
 import {
   ShoppingBag,
-  Calculator,
+  GitBranch,
   PackageSearch,
   Truck,
   FileBarChart,
@@ -22,10 +22,10 @@ const TOOLS = [
     active: true,
   },
   {
-    name: "Price Calculator",
-    href: "/price-calculator",
-    icon: Calculator,
-    active: false,
+    name: "Association Rules",
+    href: "/association-rules",
+    icon: GitBranch,
+    active: true,
   },
   {
     name: "Stock Analyzer",

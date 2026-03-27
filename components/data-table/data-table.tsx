@@ -2,15 +2,13 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { FixedSizeList as List } from "react-window";
-import { cn } from "@/lib/utils";
+import { cn, formatPrice } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
-import { OUTPUT_COLUMNS, TOTAL_ROW_WIDTH, type OutputRow } from "@/lib/types";
+import { OUTPUT_COLUMNS, PRICE_COLUMNS, TABLE_SIZE_CONFIG, type OutputRow } from "@/lib/types";
 import { StatusBadge, PolicyBadge } from "@/components/status-badge/status-badge";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
-const ROW_HEIGHT = 36;
-
-function CellValue({ column, value }: { column: keyof OutputRow; value: unknown }) {
+function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value: unknown; fontSize: string }) {
   if (column === "Status") {
     return <StatusBadge status={value as "active" | "draft"} />;
   }
@@ -20,10 +18,14 @@ function CellValue({ column, value }: { column: keyof OutputRow; value: unknown 
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted/50">—</span>;
   }
-  if (typeof value === "number") {
-    return <span className="font-mono text-xs">{value}</span>;
+  if (PRICE_COLUMNS.has(column)) {
+    const formatted = formatPrice(value as number | null);
+    return formatted ? <span className="font-mono" style={{ fontSize }}>{formatted}</span> : <span className="text-muted/50">—</span>;
   }
-  return <span className="truncate">{String(value)}</span>;
+  if (typeof value === "number") {
+    return <span className="font-mono" style={{ fontSize }}>{value}</span>;
+  }
+  return <span className="truncate" title={String(value)}>{String(value)}</span>;
 }
 
 export function DataTable() {
@@ -31,36 +33,34 @@ export function DataTable() {
   const statusFilter = useAppStore((s) => s.statusFilter);
   const etaFilter = useAppStore((s) => s.etaFilter);
   const discountFilter = useAppStore((s) => s.discountFilter);
+  const policyFilter = useAppStore((s) => s.policyFilter);
   const sortColumn = useAppStore((s) => s.sortColumn);
   const sortDirection = useAppStore((s) => s.sortDirection);
   const toggleSort = useAppStore((s) => s.toggleSort);
+  const visibleColumns = useAppStore((s) => s.visibleColumns);
+  const tableSize = useAppStore((s) => s.tableSize);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const outerRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(700);
+
+  const sizeConfig = TABLE_SIZE_CONFIG[tableSize];
+
+  // Visible column definitions
+  const activeCols = useMemo(
+    () => OUTPUT_COLUMNS.filter((c) => visibleColumns.includes(c.key)),
+    [visibleColumns]
+  );
 
   // Resize observer for dynamic height
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      const h = entries[0].contentRect.height - 36; // subtract header height
+      const h = entries[0].contentRect.height - 36;
       setListHeight(Math.max(h, 100));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-
-  // Sync horizontal scroll between header and list
-  useEffect(() => {
-    const el = outerRef.current;
-    if (!el) return;
-    const handler = () => {
-      if (headerRef.current) headerRef.current.scrollLeft = el.scrollLeft;
-    };
-    el.addEventListener("scroll", handler);
-    return () => el.removeEventListener("scroll", handler);
   }, []);
 
   // Filter data
@@ -79,21 +79,28 @@ export function DataTable() {
     } else if (discountFilter === "no") {
       data = data.filter((r) => r["Discount %"] === null);
     }
+    if (policyFilter !== "all") {
+      data = data.filter((r) => r["Variant Inventory Policy"] === policyFilter);
+    }
     return data;
-  }, [results, statusFilter, etaFilter, discountFilter]);
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter]);
 
-  // Sort data
+  // Sort data with nulls-to-bottom
   const sortedData = useMemo(() => {
     if (!sortColumn) return filteredData;
-    const sorted = [...filteredData].sort((a, b) => {
-      const av = a[sortColumn];
-      const bv = b[sortColumn];
-      if (av === null || av === undefined) return 1;
-      if (bv === null || bv === undefined) return -1;
-      if (typeof av === "number" && typeof bv === "number") return av - bv;
-      return String(av).localeCompare(String(bv));
+    const col = sortColumn;
+    const dir = sortDirection === "asc" ? 1 : -1;
+    return [...filteredData].sort((a, b) => {
+      const av = a[col];
+      const bv = b[col];
+      const aEmpty = av === null || av === undefined || av === "";
+      const bEmpty = bv === null || bv === undefined || bv === "";
+      if (aEmpty && bEmpty) return 0;
+      if (aEmpty) return 1;
+      if (bEmpty) return -1;
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+      return String(av).localeCompare(String(bv), undefined, { sensitivity: "base" }) * dir;
     });
-    return sortDirection === "desc" ? sorted.reverse() : sorted;
   }, [filteredData, sortColumn, sortDirection]);
 
   const Row = useCallback(
@@ -104,27 +111,31 @@ export function DataTable() {
         <div
           style={style}
           className={cn(
-            "flex items-center border-b border-edge/50 text-xs transition-colors",
+            "flex items-center border-b border-edge/50 transition-colors",
             policy === "continue" && "bg-amber-50",
             row.Status === "draft" && "bg-zinc-50",
             "hover:bg-surface-hover"
           )}
         >
-          <div className="flex items-center" style={{ minWidth: TOTAL_ROW_WIDTH }}>
-            {OUTPUT_COLUMNS.map((col) => (
+          <div className="flex items-center w-full" style={{ minWidth: 400 }}>
+            {activeCols.map((col) => (
               <div
                 key={col.key}
-                className="px-2.5 truncate shrink-0"
-                style={{ width: col.width }}
+                className={cn(
+                  "truncate shrink-0",
+                  col.align === "center" ? "text-center" : "text-left"
+                )}
+                style={{ flex: col.flex, padding: sizeConfig.cellPadding, fontSize: sizeConfig.fontSize }}
+                title={row[col.key] != null ? String(row[col.key]) : undefined}
               >
-                <CellValue column={col.key} value={row[col.key]} />
+                <CellValue column={col.key} value={row[col.key]} fontSize={sizeConfig.fontSize} />
               </div>
             ))}
           </div>
         </div>
       );
     },
-    [sortedData]
+    [sortedData, activeCols, sizeConfig]
   );
 
   if (results.length === 0) {
@@ -142,37 +153,44 @@ export function DataTable() {
 
   return (
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
-      {/* Scroll-synced header */}
-      <div ref={headerRef} className="overflow-hidden border-b border-edge bg-surface shrink-0">
-        <div className="flex items-center h-9" style={{ minWidth: TOTAL_ROW_WIDTH }}>
-          {OUTPUT_COLUMNS.map((col) => (
-            <button
-              key={col.key}
-              onClick={() => toggleSort(col.key)}
-              className="flex items-center gap-1 px-2.5 text-[11px] font-semibold text-muted uppercase tracking-wider hover:text-primary transition-colors shrink-0 cursor-pointer"
-              style={{ width: col.width }}
-            >
-              <span className="truncate">{col.label}</span>
-              {sortColumn === col.key ? (
-                sortDirection === "asc" ? (
-                  <ArrowUp size={10} className="text-accent shrink-0" />
+      {/* Header */}
+      <div className="border-b border-edge bg-surface shrink-0">
+        <div className="flex items-center h-9" style={{ minWidth: 400 }}>
+          {activeCols.map((col) => {
+            const isSorted = sortColumn === col.key;
+            return (
+              <button
+                key={col.key}
+                onClick={() => toggleSort(col.key)}
+                className={cn(
+                  "flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider hover:text-primary transition-colors shrink-0 cursor-pointer",
+                  col.align === "center" ? "justify-center" : "justify-start",
+                  isSorted ? "text-amber-600" : "text-muted"
+                )}
+                style={{ flex: col.flex, padding: "0 8px" }}
+                title={col.label}
+              >
+                <span className="truncate">{col.label}</span>
+                {isSorted ? (
+                  sortDirection === "asc" ? (
+                    <ArrowUp size={10} className="text-amber-600 shrink-0" />
+                  ) : (
+                    <ArrowDown size={10} className="text-amber-600 shrink-0" />
+                  )
                 ) : (
-                  <ArrowDown size={10} className="text-accent shrink-0" />
-                )
-              ) : (
-                <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-30 shrink-0" />
-              )}
-            </button>
-          ))}
+                  <ArrowUpDown size={10} className="opacity-20 shrink-0" />
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
       {/* Virtualized rows */}
       <List
-        outerRef={outerRef}
         height={listHeight}
         width="100%"
-        itemSize={ROW_HEIGHT}
+        itemSize={sizeConfig.rowHeight}
         itemCount={sortedData.length}
         overscanCount={10}
       >

@@ -61,23 +61,37 @@ export interface Summary {
   referenceFilled: number;
 }
 
-export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; width: number }[] = [
-  { key: "Title", label: "Title", width: 200 },
-  { key: "Variant SKU", label: "Variant SKU", width: 140 },
-  { key: "Variant Quantity", label: "Qty", width: 70 },
-  { key: "Status", label: "Status", width: 80 },
-  { key: "Published", label: "Published", width: 80 },
-  { key: "Variant Price", label: "Price", width: 90 },
-  { key: "Variant Compare at Price", label: "Compare Price", width: 120 },
-  { key: "ETA", label: "ETA", width: 100 },
-  { key: "Variant Inventory Policy", label: "Policy", width: 90 },
-  { key: "PlannedInStock", label: "Planned", width: 90 },
-  { key: "Discount %", label: "Disc %", width: 80 },
-  { key: "Cost per item", label: "Cost", width: 90 },
-  { key: "Reference", label: "Reference", width: 150 },
+export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number; align: "left" | "center" }[] = [
+  { key: "Title", label: "Title", flex: 3, align: "left" },
+  { key: "Variant SKU", label: "Variant SKU", flex: 2, align: "left" },
+  { key: "Variant Quantity", label: "Qty", flex: 1, align: "center" },
+  { key: "Status", label: "Status", flex: 1, align: "center" },
+  { key: "Published", label: "Published", flex: 1, align: "center" },
+  { key: "Variant Price", label: "Price", flex: 1, align: "center" },
+  { key: "Variant Compare at Price", label: "Compare Price", flex: 1.5, align: "center" },
+  { key: "ETA", label: "ETA", flex: 1.5, align: "left" },
+  { key: "Variant Inventory Policy", label: "Policy", flex: 1.5, align: "center" },
+  { key: "PlannedInStock", label: "Planned", flex: 1, align: "center" },
+  { key: "Discount %", label: "Disc %", flex: 1, align: "center" },
+  { key: "Cost per item", label: "Cost", flex: 1, align: "center" },
+  { key: "Reference", label: "Reference", flex: 2, align: "left" },
 ];
 
-export const TOTAL_ROW_WIDTH = OUTPUT_COLUMNS.reduce((sum, c) => sum + c.width, 0);
+export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
+  "Variant Price",
+  "Variant Compare at Price",
+  "Cost per item",
+]);
+
+export type TableSize = "S" | "M" | "L";
+
+export const TABLE_SIZE_CONFIG: Record<TableSize, { rowHeight: number; fontSize: string; cellPadding: string }> = {
+  S: { rowHeight: 32, fontSize: "11px", cellPadding: "4px 8px" },
+  M: { rowHeight: 44, fontSize: "13px", cellPadding: "8px 12px" },
+  L: { rowHeight: 60, fontSize: "15px", cellPadding: "12px 16px" },
+};
+
+export type ExportRowLimit = "all" | 10 | 20 | 50 | 100 | "custom";
 
 export const FILE_SLOTS_CONFIG: { key: FileKey; label: string; hint: string }[] = [
   { key: "shopify", label: "Shopify Export", hint: "export-shopify.csv" },

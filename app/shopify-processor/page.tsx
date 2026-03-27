@@ -1,14 +1,17 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useMemo } from "react";
+import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { useAppStore } from "@/lib/store";
 import type { FileKey, OutputRow, WorkerResponse } from "@/lib/types";
+import { OUTPUT_COLUMNS, PRICE_COLUMNS } from "@/lib/types";
 import { parseFileBuffer, getXLSX } from "@/lib/parsers";
+import { formatPrice } from "@/lib/utils";
 import { FileDropzone } from "@/components/file-dropzone/file-dropzone";
 import { DataTable } from "@/components/data-table/data-table";
 import { StatChip } from "@/components/status-badge/status-badge";
+import { ColumnToggle } from "@/components/column-toggle/column-toggle";
 import { Button } from "@/components/ui/button";
-import { Play, Download, FileSpreadsheet, Loader2 } from "lucide-react";
+import { Play, Download, FileSpreadsheet, Loader2, ChevronDown, X } from "lucide-react";
 
 const FILE_KEYS: FileKey[] = ["shopify", "sales", "stock", "purchase", "items"];
 
@@ -30,12 +33,62 @@ export default function ShopifyProcessorPage() {
   const statusFilter = useAppStore((s) => s.statusFilter);
   const etaFilter = useAppStore((s) => s.etaFilter);
   const discountFilter = useAppStore((s) => s.discountFilter);
+  const policyFilter = useAppStore((s) => s.policyFilter);
   const setStatusFilter = useAppStore((s) => s.setStatusFilter);
   const setEtaFilter = useAppStore((s) => s.setEtaFilter);
   const setDiscountFilter = useAppStore((s) => s.setDiscountFilter);
+  const setPolicyFilter = useAppStore((s) => s.setPolicyFilter);
+  const visibleColumns = useAppStore((s) => s.visibleColumns);
+  const sortColumn = useAppStore((s) => s.sortColumn);
+  const sortDirection = useAppStore((s) => s.sortDirection);
+  const tableSize = useAppStore((s) => s.tableSize);
+  const setTableSize = useAppStore((s) => s.setTableSize);
+  const exportRowLimit = useAppStore((s) => s.exportRowLimit);
+  const customRowLimit = useAppStore((s) => s.customRowLimit);
+  const setExportRowLimit = useAppStore((s) => s.setExportRowLimit);
+  const setCustomRowLimit = useAppStore((s) => s.setCustomRowLimit);
 
   const allReady = useAppStore((s) => s.allFilesReady);
   const canRun = allReady() && processingState !== "processing";
+
+  // Filtered rows (same logic as DataTable — derived for export)
+  const filteredRows = useMemo(() => {
+    let data = results;
+    if (statusFilter !== "all") data = data.filter((r) => r.Status === statusFilter);
+    if (etaFilter === "yes") data = data.filter((r) => r.ETA !== null && r.ETA !== "");
+    else if (etaFilter === "no") data = data.filter((r) => r.ETA === null || r.ETA === "");
+    if (discountFilter === "yes") data = data.filter((r) => r["Discount %"] !== null);
+    else if (discountFilter === "no") data = data.filter((r) => r["Discount %"] === null);
+    if (policyFilter !== "all") data = data.filter((r) => r["Variant Inventory Policy"] === policyFilter);
+    return data;
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter]);
+
+  // Sorted rows (for export — same sort as DataTable)
+  const sortedRows = useMemo(() => {
+    if (!sortColumn) return filteredRows;
+    const col = sortColumn;
+    const dir = sortDirection === "asc" ? 1 : -1;
+    return [...filteredRows].sort((a, b) => {
+      const av = a[col];
+      const bv = b[col];
+      const aEmpty = av === null || av === undefined || av === "";
+      const bEmpty = bv === null || bv === undefined || bv === "";
+      if (aEmpty && bEmpty) return 0;
+      if (aEmpty) return 1;
+      if (bEmpty) return -1;
+      if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+      return String(av).localeCompare(String(bv), undefined, { sensitivity: "base" }) * dir;
+    });
+  }, [filteredRows, sortColumn, sortDirection]);
+
+  // Export row count
+  const exportLimit = useMemo(() => {
+    if (exportRowLimit === "all") return sortedRows.length;
+    if (exportRowLimit === "custom") return Math.min(customRowLimit, sortedRows.length);
+    return Math.min(exportRowLimit, sortedRows.length);
+  }, [exportRowLimit, customRowLimit, sortedRows.length]);
+
+  const isFiltered = statusFilter !== "all" || etaFilter !== "all" || discountFilter !== "all" || policyFilter !== "all";
 
   // Initialize worker
   useEffect(() => {
@@ -87,38 +140,58 @@ export default function ShopifyProcessorPage() {
     workerRef.current.postMessage({ type: "process", files: parsed });
   }, [canRun, files, startProcessing, setError]);
 
+  // Build export data: sorted+sliced rows × visible columns, with price formatting
+  const buildExportData = useCallback(() => {
+    const rows = sortedRows.slice(0, exportLimit);
+    return rows.map((row) => {
+      const obj: Record<string, unknown> = {};
+      for (const key of visibleColumns) {
+        if (PRICE_COLUMNS.has(key)) {
+          obj[key] = formatPrice(row[key] as number | null) || null;
+        } else {
+          obj[key] = row[key];
+        }
+      }
+      return obj;
+    });
+  }, [sortedRows, exportLimit, visibleColumns]);
+
   // Export functions
   const handleExportXlsx = useCallback(async () => {
-    if (results.length === 0) return;
+    const data = buildExportData();
+    if (data.length === 0) return;
     const XLSX = await getXLSX();
-    const ws = XLSX.utils.json_to_sheet(results);
+    const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Shopify Output");
     const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
     const blob = new Blob([buf], {
       type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     });
+    const date = new Date().toISOString().slice(0, 10);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "shopify_final.xlsx";
+    a.download = `shopify_processed_${date}_${data.length}rows.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [results]);
+  }, [buildExportData]);
 
   const handleExportCsv = useCallback(async () => {
-    if (results.length === 0) return;
+    const data = buildExportData();
+    if (data.length === 0) return;
     const XLSX = await getXLSX();
-    const ws = XLSX.utils.json_to_sheet(results);
+    const ws = XLSX.utils.json_to_sheet(data);
     const csv = XLSX.utils.sheet_to_csv(ws);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const date = new Date().toISOString().slice(0, 10);
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "shopify_final.csv";
+    a.download = `shopify_processed_${date}_${data.length}rows.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [results]);
+  }, [buildExportData]);
 
   // Count ready files
   const readyCount = useMemo(
@@ -151,20 +224,42 @@ export default function ShopifyProcessorPage() {
 
           {results.length > 0 && (
             <>
-              <Button variant="outline" size="sm" onClick={handleExportXlsx}>
-                <FileSpreadsheet size={12} className="mr-1.5" />
-                Export .xlsx
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleExportCsv}>
-                <Download size={12} className="mr-1.5" />
-                Export .csv
-              </Button>
+              <ColumnToggle />
+              <ExportDropdown
+                onExportXlsx={handleExportXlsx}
+                onExportCsv={handleExportCsv}
+                rowCount={exportLimit}
+                colCount={visibleColumns.length}
+                exportRowLimit={exportRowLimit}
+                customRowLimit={customRowLimit}
+                filteredTotal={sortedRows.length}
+                onSetExportRowLimit={setExportRowLimit}
+                onSetCustomRowLimit={setCustomRowLimit}
+              />
+              <SizeToggle value={tableSize} onChange={setTableSize} />
             </>
           )}
 
-          <span className="text-[11px] text-muted font-mono ml-auto">
-            {readyCount}/5 files
-          </span>
+          {/* Row & column summary */}
+          {results.length > 0 && (
+            <div className="flex items-center gap-2 ml-auto">
+              <span className="text-[11px] text-muted font-mono">
+                {isFiltered
+                  ? `${filteredRows.length.toLocaleString()} / ${results.length.toLocaleString()} rows (filtered)`
+                  : `${results.length.toLocaleString()} rows`}
+              </span>
+              <span className="text-[11px] text-muted/60">·</span>
+              <span className="text-[11px] text-muted font-mono">
+                Columns: {visibleColumns.length}/{OUTPUT_COLUMNS.length}
+              </span>
+            </div>
+          )}
+
+          {results.length === 0 && (
+            <span className="text-[11px] text-muted font-mono ml-auto">
+              {readyCount}/5 files
+            </span>
+          )}
         </div>
 
         {/* Progress bar */}
@@ -218,7 +313,7 @@ export default function ShopifyProcessorPage() {
         <div className="flex-1 flex flex-col min-w-0">
           {/* Filter bar */}
           {results.length > 0 && (
-            <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-edge bg-surface/50">
+            <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-edge bg-surface/50 flex-wrap">
               <span className="text-[11px] text-muted uppercase tracking-wider font-semibold">
                 Filters
               </span>
@@ -252,6 +347,46 @@ export default function ShopifyProcessorPage() {
                 ]}
                 onChange={(v) => setDiscountFilter(v as "all" | "yes" | "no")}
               />
+              <FilterSelect
+                label="Policy"
+                value={policyFilter}
+                options={[
+                  { value: "all", label: "All" },
+                  { value: "continue", label: "Continue" },
+                  { value: "deny", label: "Deny" },
+                ]}
+                onChange={(v) => setPolicyFilter(v as "all" | "continue" | "deny")}
+              />
+
+              {/* Active filter chips */}
+              {isFiltered && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  {statusFilter !== "all" && (
+                    <FilterChip
+                      label={`Status: ${statusFilter}`}
+                      onRemove={() => setStatusFilter("all")}
+                    />
+                  )}
+                  {etaFilter !== "all" && (
+                    <FilterChip
+                      label={`ETA: ${etaFilter}`}
+                      onRemove={() => setEtaFilter("all")}
+                    />
+                  )}
+                  {discountFilter !== "all" && (
+                    <FilterChip
+                      label={`Discount: ${discountFilter}`}
+                      onRemove={() => setDiscountFilter("all")}
+                    />
+                  )}
+                  {policyFilter !== "all" && (
+                    <FilterChip
+                      label={`Policy: ${policyFilter}`}
+                      onRemove={() => setPolicyFilter("all")}
+                    />
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -288,6 +423,170 @@ function FilterSelect({
           </option>
         ))}
       </select>
+    </div>
+  );
+}
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 bg-accent/10 text-accent text-[11px] font-medium rounded-full px-2.5 py-0.5">
+      {label}
+      <button
+        onClick={onRemove}
+        className="hover:bg-accent/20 rounded-full p-0.5 transition-colors cursor-pointer"
+      >
+        <X size={10} />
+      </button>
+    </span>
+  );
+}
+
+function ExportDropdown({
+  onExportXlsx,
+  onExportCsv,
+  rowCount,
+  colCount,
+  exportRowLimit,
+  customRowLimit,
+  filteredTotal,
+  onSetExportRowLimit,
+  onSetCustomRowLimit,
+}: {
+  onExportXlsx: () => void;
+  onExportCsv: () => void;
+  rowCount: number;
+  colCount: number;
+  exportRowLimit: import("@/lib/types").ExportRowLimit;
+  customRowLimit: number;
+  filteredTotal: number;
+  onSetExportRowLimit: (l: import("@/lib/types").ExportRowLimit) => void;
+  onSetCustomRowLimit: (n: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        ref.current &&
+        !ref.current.contains(e.target as Node) &&
+        btnRef.current &&
+        !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const ROW_OPTIONS: { value: import("@/lib/types").ExportRowLimit; label: string }[] = [
+    { value: "all", label: "All rows" },
+    { value: 10, label: "Top 10" },
+    { value: 20, label: "Top 20" },
+    { value: 50, label: "Top 50" },
+    { value: 100, label: "Top 100" },
+    { value: "custom", label: "Custom…" },
+  ];
+
+  return (
+    <div className="relative">
+      <Button
+        ref={btnRef}
+        variant="outline"
+        size="sm"
+        onClick={() => setOpen((v) => !v)}
+      >
+        <Download size={12} className="mr-1.5" />
+        Export
+        <ChevronDown size={10} className="ml-1" />
+      </Button>
+      {open && (
+        <div
+          ref={ref}
+          className="absolute top-full left-0 mt-1 z-50 w-60 bg-white border border-edge rounded-lg shadow-lg py-1"
+        >
+          <div className="px-3 py-1.5 border-b border-edge">
+            <span className="text-[10px] text-muted font-mono">
+              Exporting {rowCount.toLocaleString()} rows × {colCount} columns
+            </span>
+          </div>
+
+          {/* Row limit selector */}
+          <div className="px-3 py-2 border-b border-edge">
+            <span className="text-[10px] text-muted uppercase tracking-wider font-semibold">Rows</span>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {ROW_OPTIONS.map((opt) => (
+                <button
+                  key={String(opt.value)}
+                  onClick={() => onSetExportRowLimit(opt.value)}
+                  className={`px-2 py-0.5 text-[10px] rounded border cursor-pointer transition-colors ${
+                    exportRowLimit === opt.value
+                      ? "bg-accent text-white border-accent"
+                      : "bg-white text-primary border-edge hover:bg-slate-50"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            {exportRowLimit === "custom" && (
+              <input
+                type="number"
+                min={1}
+                max={filteredTotal}
+                value={customRowLimit}
+                onChange={(e) => onSetCustomRowLimit(Math.max(1, Math.min(filteredTotal, Number(e.target.value) || 1)))}
+                className="mt-1.5 w-full bg-white border border-edge rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent/50"
+              />
+            )}
+          </div>
+
+          <button
+            onClick={() => { onExportXlsx(); setOpen(false); }}
+            className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-slate-50 transition-colors cursor-pointer"
+          >
+            <FileSpreadsheet size={12} className="text-green-600" />
+            Export to Excel (.xlsx)
+          </button>
+          <button
+            onClick={() => { onExportCsv(); setOpen(false); }}
+            className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-slate-50 transition-colors cursor-pointer"
+          >
+            <Download size={12} className="text-blue-600" />
+            Export to CSV (.csv)
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SizeToggle({
+  value,
+  onChange,
+}: {
+  value: import("@/lib/types").TableSize;
+  onChange: (s: import("@/lib/types").TableSize) => void;
+}) {
+  const sizes: import("@/lib/types").TableSize[] = ["S", "M", "L"];
+  return (
+    <div className="inline-flex border border-edge rounded overflow-hidden">
+      {sizes.map((s) => (
+        <button
+          key={s}
+          onClick={() => onChange(s)}
+          className={`px-2 py-1 text-[10px] font-bold cursor-pointer transition-colors ${
+            value === s
+              ? "bg-amber-500 text-white"
+              : "bg-white text-muted hover:bg-slate-50"
+          }`}
+        >
+          {s}
+        </button>
+      ))}
     </div>
   );
 }
