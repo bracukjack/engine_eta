@@ -38,7 +38,7 @@ export function DataTable() {
   const containerRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
-  const [listHeight, setListHeight] = useState(400);
+  const [listHeight, setListHeight] = useState(700);
 
   // Resize observer for dynamic height
   useEffect(() => {
