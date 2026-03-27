@@ -9,15 +9,51 @@ const ctx = self as unknown as WorkerSelf;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/** European number format: "1.234,56" → 1234.56. Already-numeric values are returned as-is. */
+/**
+ * Smart number parser matching Python smart_parse_number exactly.
+ * Keeps values as strings until here (via PapaParse), then applies:
+ *   Rule A: no separators           "32"         → 32
+ *   Rule B: dots only               "134.95"     → 134.95 (decimal)
+ *                                   "1.234"      → 1234   (3-digit = thousands)
+ *                                   "1.234.567"  → 1234567
+ *   Rule C: commas only             "54,95"      → 54.95  (EU decimal)
+ *                                   "1,234"      → 1234   (3-digit = thousands)
+ *   Rule D: both present            last separator wins as decimal
+ */
 function parseNum(val: unknown): number | null {
   if (val === null || val === undefined || val === "") return null;
   if (typeof val === "number") return isNaN(val) ? null : val;
-  const s = String(val).trim();
-  if (s === "") return null;
-  const cleaned = s.replace(/\./g, "").replace(",", ".");
-  const num = parseFloat(cleaned);
-  return isNaN(num) ? null : num;
+
+  let s = String(val).trim().replace(/[\s€$£\u00A0]/g, "");
+  if (s === "" || s === "-" || s.toLowerCase() === "n/a") return null;
+  if (!/\d/.test(s)) return null;
+
+  const dotCount = (s.match(/\./g) ?? []).length;
+  const commaCount = (s.match(/,/g) ?? []).length;
+
+  try {
+    if (dotCount === 0 && commaCount === 0) return parseFloat(s);                 // Rule A
+    if (dotCount > 0 && commaCount === 0) {                                        // Rule B
+      if (dotCount > 1) return parseFloat(s.replace(/\./g, ""));
+      return s.split(".").pop()!.length === 3
+        ? parseFloat(s.replace(/\./g, ""))
+        : parseFloat(s);
+    }
+    if (commaCount > 0 && dotCount === 0) {                                        // Rule C
+      if (commaCount > 1) return parseFloat(s.replace(/,/g, ""));
+      return s.split(",").pop()!.length === 3
+        ? parseFloat(s.replace(/,/g, ""))
+        : parseFloat(s.replace(",", "."));
+    }
+    // Rule D: both present — last separator is the decimal
+    const lastDot = s.lastIndexOf(".");
+    const lastComma = s.lastIndexOf(",");
+    return lastComma > lastDot
+      ? parseFloat(s.replace(/\./g, "").replace(",", "."))  // EU: "1.234,56"
+      : parseFloat(s.replace(/,/g, ""));                     // US: "1,234.56"
+  } catch {
+    return null;
+  }
 }
 
 /** Extract discount % from Class_09Description */
