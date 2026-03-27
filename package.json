@@ -9,23 +9,26 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "dayjs": "^1.11.20",
+    "clsx": "^2.1.1",
     "file-saver": "^2.0.5",
-    "lodash": "^4.17.23",
+    "lightningcss": "^1.32.0",
+    "lucide-react": "^0.468.0",
     "next": "16.1.6",
-    "papaparse": "^5.5.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "xlsx": "^0.18.5"
+    "react-dropzone": "^14.3.8",
+    "react-window": "^1.8.11",
+    "tailwind-merge": "^3.0.2",
+    "xlsx": "^0.18.5",
+    "zustand": "^5.0.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/file-saver": "^2.0.7",
-    "@types/lodash": "^4.17.24",
     "@types/node": "^20",
-    "@types/papaparse": "^5.5.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/react-window": "^1.8.8",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",
     "tailwindcss": "^4",
