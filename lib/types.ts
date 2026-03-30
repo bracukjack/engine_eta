@@ -44,6 +44,7 @@ export interface OutputRow {
   ETA: string | null;
   "Variant Inventory Policy": "continue" | "deny";
   PlannedInStock: number;
+  PlannedOutStock: number;
   "Discount %": number | null;
   "Cost per item": number | null;
   Reference: string | null;
@@ -72,6 +73,7 @@ export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number
   { key: "ETA", label: "ETA", flex: 1.5, align: "left" },
   { key: "Variant Inventory Policy", label: "Policy", flex: 1.5, align: "center" },
   { key: "PlannedInStock", label: "Planned", flex: 1, align: "center" },
+  { key: "PlannedOutStock", label: "Planned Out", flex: 1, align: "center" },
   { key: "Discount %", label: "Disc %", flex: 1, align: "center" },
   { key: "Cost per item", label: "Cost", flex: 1, align: "center" },
   { key: "Reference", label: "Reference", flex: 2, align: "left" },
@@ -86,6 +88,7 @@ export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
 export const INTEGER_OUTPUT_COLUMNS: Set<keyof OutputRow> = new Set([
   "Variant Quantity",
   "PlannedInStock",
+  "PlannedOutStock",
 ]);
 
 export type TableSize = "S" | "M" | "L";
@@ -97,6 +100,12 @@ export const TABLE_SIZE_CONFIG: Record<TableSize, { rowHeight: number; fontSize:
 };
 
 export type ExportRowLimit = "all" | 10 | 20 | 50 | 100 | "custom";
+
+export interface BatchProgress {
+  current: number;
+  total: number;
+  phase: "building" | "compressing";
+}
 
 // ── Preview ──────────────────────────────────────────────────────────────────
 
@@ -117,7 +126,7 @@ export const HIGHLIGHTED_PREVIEW_COLUMNS: Record<FileKey, Set<string>> = {
     "ETA (product.metafields.custom.eta)",
   ]),
   sales: new Set(["Item", "Reference", "Order date", "Order status"]),
-  stock: new Set(["ItemCode", "PlannedInStock"]),
+  stock: new Set(["ItemCode", "Stock", "PlannedInStock", "PlannedOutStock"]),
   purchase: new Set(["Item", "Receipt date"]),
   items: new Set(["Code", "SalesPrice", "Extra field:  Retail Price EUR", "Class_09Description"]),
 };

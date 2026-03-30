@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import type { FileKey, OutputRow, Summary, TableSize, ExportRowLimit, PreviewData } from "./types";
+import type { FileKey, OutputRow, Summary, TableSize, ExportRowLimit, PreviewData, BatchProgress } from "./types";
 import { OUTPUT_COLUMNS } from "./types";
 
 interface FileSlotState {
@@ -60,6 +60,14 @@ interface AppStore {
   customRowLimit: number;
   setExportRowLimit: (l: ExportRowLimit) => void;
   setCustomRowLimit: (n: number) => void;
+
+  // ── Batch / Split Export ───────────────────────────────────────────
+  splitMode: boolean;
+  rowsPerFile: number;
+  batchProgress: BatchProgress | null;
+  setSplitMode: (v: boolean) => void;
+  setRowsPerFile: (n: number) => void;
+  setBatchProgress: (p: BatchProgress | null) => void;
 
   // ── Preview ────────────────────────────────────────────────────────
   previewData: Record<FileKey, PreviewData | null>;
@@ -156,6 +164,14 @@ export const useAppStore = create<AppStore>((set, get) => ({
   customRowLimit: 50,
   setExportRowLimit: (l) => set({ exportRowLimit: l }),
   setCustomRowLimit: (n) => set({ customRowLimit: n }),
+
+  // Batch / Split Export
+  splitMode: false,
+  rowsPerFile: 50,
+  batchProgress: null,
+  setSplitMode: (v) => set({ splitMode: v }),
+  setRowsPerFile: (n) => set({ rowsPerFile: n }),
+  setBatchProgress: (p) => set({ batchProgress: p }),
 
   // Preview
   previewData: { shopify: null, sales: null, stock: null, purchase: null, items: null },

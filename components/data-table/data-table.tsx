@@ -1,12 +1,67 @@
 "use client";
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { FixedSizeList as List } from "react-window";
 import { cn, formatPrice, formatInteger } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
 import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS, TABLE_SIZE_CONFIG, type OutputRow } from "@/lib/types";
 import { StatusBadge, PolicyBadge } from "@/components/status-badge/status-badge";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+
+function ReferenceCell({ value, fontSize }: { value: string; fontSize: string }) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const refs = value.split("\n").filter(Boolean);
+
+  const POPOVER_WIDTH = 260;
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      const left = Math.min(r.left, window.innerWidth - POPOVER_WIDTH - 8);
+      setPos({ top: r.bottom + 4, left: Math.max(8, left) });
+    }
+    setOpen((v) => !v);
+  };
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="flex items-center gap-1 min-w-0 max-w-full cursor-pointer text-left"
+        onClick={toggle}
+        style={{ fontSize }}
+      >
+        <span className="truncate">{refs[0] ?? "—"}</span>
+        {refs.length > 1 && (
+          <span className="shrink-0 text-[9px] font-mono bg-slate-100 text-muted rounded px-1">
+            +{refs.length - 1}
+          </span>
+        )}
+      </button>
+      {open && createPortal(
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div
+            className="fixed z-50 bg-white border border-edge rounded-lg shadow-lg py-1 overflow-y-auto"
+            style={{ top: pos.top, left: pos.left, width: POPOVER_WIDTH, height: 300 }}
+          >
+            {refs.map((ref, i) => (
+              <div key={i} className="px-3 py-1.5 text-[11px] font-mono text-primary hover:bg-slate-50 whitespace-nowrap">
+                {ref}
+              </div>
+            ))}
+          </div>
+        </>,
+        document.body
+      )}
+    </>
+  );
+}
 
 function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value: unknown; fontSize: string }) {
   if (column === "Status") {
@@ -17,6 +72,9 @@ function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value
   }
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted/50">—</span>;
+  }
+  if (column === "Reference") {
+    return <ReferenceCell value={String(value)} fontSize={fontSize} />;
   }
   if (PRICE_COLUMNS.has(column)) {
     const formatted = formatPrice(value as number | null);
@@ -130,7 +188,7 @@ export function DataTable() {
                   col.align === "center" ? "text-center" : "text-left"
                 )}
                 style={{ flex: col.flex, padding: sizeConfig.cellPadding, fontSize: sizeConfig.fontSize }}
-                title={row[col.key] != null ? String(row[col.key]) : undefined}
+                title={col.key !== "Reference" && row[col.key] != null ? String(row[col.key]) : undefined}
               >
                 <CellValue column={col.key} value={row[col.key]} fontSize={sizeConfig.fontSize} />
               </div>

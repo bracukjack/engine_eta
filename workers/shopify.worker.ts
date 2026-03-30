@@ -107,44 +107,36 @@ ctx.onmessage = (e: MessageEvent) => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const unpaidSkus = new Set<string>();
-    const refMap = new Map<string, string>();
-    const refDateMap = new Map<string, number>();
+    const refsMap = new Map<string, string[]>();
 
     for (const row of salesRows) {
       const item = String(row["Item"] ?? "").trim();
       if (item === "") continue;
 
-      const ref = String(row["Reference"] ?? "");
-      const isPaid = ref.toUpperCase().includes("PAID");
-
-      if (!isPaid) {
-        unpaidSkus.add(item);
-      }
-
-      const orderDate = parseDMY(row["Order date"]);
-      if (orderDate) {
-        const ts = orderDate.getTime();
-        const existing = refDateMap.get(item);
-        if (existing === undefined || ts > existing) {
-          refDateMap.set(item, ts);
-          refMap.set(item, ref);
+      const ref = String(row["Reference"] ?? "").trim();
+      if (ref) {
+        const existing = refsMap.get(item);
+        if (!existing) {
+          refsMap.set(item, [ref]);
+        } else if (!existing.includes(ref)) {
+          existing.push(ref);
         }
       }
     }
 
-    progress("Sales Orders", 45, `Found ${unpaidSkus.size} unpaid SKUs`);
+    progress("Sales Orders", 45, `Collected references for ${refsMap.size} SKUs`);
 
     // ── STEP 2: Stock Positions ────────────────────────────────────────
     progress("Stock", 50, "Processing stock positions...");
 
-    const plannedMap = new Map<string, number>();
+    const plannedInMap  = new Map<string, number>();
+    const plannedOutMap = new Map<string, number>();
     for (const row of stockRows) {
       const code = String(row["ItemCode"] ?? "").trim();
-      const planned = parseNum(row["PlannedInStock"]);
-      if (code && planned !== null) {
-        plannedMap.set(code, planned);
-      }
+      if (!code) continue;
+
+      plannedInMap.set(code,  parseNum(row["PlannedInStock"])  ?? 0);
+      plannedOutMap.set(code, parseNum(row["PlannedOutStock"]) ?? 0);
     }
 
     // ── STEP 3: Purchase Orders ────────────────────────────────────────
@@ -213,28 +205,22 @@ ctx.onmessage = (e: MessageEvent) => {
         continue;
 
       const sku = String(skuRaw).trim();
-      const qtyRaw = row["Variant Inventory Qty"];
-      const qty = Math.round(
-        typeof qtyRaw === "number" ? qtyRaw : parseFloat(String(qtyRaw)) || 0
-      );
-      const planned = Math.round(plannedMap.get(sku) ?? 0);
+      const variantQty = parseNum(row["Variant Inventory Qty"]) ?? 0;
+      const plannedIn  = plannedInMap.get(sku)  ?? 0;
+      const plannedOut = plannedOutMap.get(sku) ?? 0;
 
-      // GOAL 1 — Status
+      // GOAL 1 & 2 — Status + Policy
       let status: "active" | "draft";
-      if (qty >= 1) {
-        status = "active";
-      } else if (qty + planned > 0) {
-        status = "active";
-      } else if (unpaidSkus.has(sku)) {
-        status = "active";
-      } else {
-        status = "draft";
-      }
+      let policy: "continue" | "deny";
+      let published: "TRUE" | "FALSE";
 
-      // GOAL 2 — Inventory Policy
-      const policy: "continue" | "deny" =
-        status === "active" && qty <= 0 ? "continue" : "deny";
-      const published = status === "active" ? "TRUE" : "FALSE";
+      if (variantQty >= 1) {
+        status = "active"; published = "TRUE";  policy = "deny";
+      } else if (plannedIn >= 1) {
+        status = "active"; published = "TRUE";  policy = "continue";
+      } else {
+        status = "draft";  published = "FALSE"; policy = "deny";
+      }
 
       // GOAL 3 — ETA
       const etaDate = etaMap.get(sku);
@@ -268,19 +254,21 @@ ctx.onmessage = (e: MessageEvent) => {
         costPerItem = null;
       }
 
-      const reference = refMap.get(sku) ?? null;
+      const refs = refsMap.get(sku);
+      const reference = refs && refs.length > 0 ? refs.join("\n") : null;
 
       output.push({
         Title: String(row["Title"] ?? ""),
         "Variant SKU": sku,
-        "Variant Quantity": qty,
+        "Variant Quantity": Math.round(variantQty),
         Status: status,
         Published: published,
         "Variant Price": variantPrice,
         "Variant Compare at Price": compareAtPrice,
         ETA: etaFinal,
         "Variant Inventory Policy": policy,
-        PlannedInStock: planned,
+        PlannedInStock: Math.round(plannedIn),
+        PlannedOutStock: Math.round(plannedOut),
         "Discount %": discountPct,
         "Cost per item": costPerItem,
         Reference: reference,

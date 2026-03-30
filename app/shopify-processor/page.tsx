@@ -2,7 +2,7 @@
 
 import { useRef, useCallback, useEffect, useMemo, useState } from "react";
 import { useAppStore } from "@/lib/store";
-import type { FileKey, OutputRow, WorkerResponse } from "@/lib/types";
+import type { FileKey, OutputRow, WorkerResponse, BatchProgress } from "@/lib/types";
 import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS } from "@/lib/types";
 import { parseFileBuffer, previewFileBuffer, getXLSX } from "@/lib/parsers";
 import { formatPrice, formatInteger } from "@/lib/utils";
@@ -15,6 +15,12 @@ import { Button } from "@/components/ui/button";
 import { Play, Download, FileSpreadsheet, Loader2, ChevronDown, X } from "lucide-react";
 
 const FILE_KEYS: FileKey[] = ["shopify", "sales", "stock", "purchase", "items"];
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
+  return chunks;
+}
 
 export default function ShopifyProcessorPage() {
   const workerRef = useRef<Worker | null>(null);
@@ -48,6 +54,20 @@ export default function ShopifyProcessorPage() {
   const customRowLimit = useAppStore((s) => s.customRowLimit);
   const setExportRowLimit = useAppStore((s) => s.setExportRowLimit);
   const setCustomRowLimit = useAppStore((s) => s.setCustomRowLimit);
+
+  const splitMode = useAppStore((s) => s.splitMode);
+  const rowsPerFile = useAppStore((s) => s.rowsPerFile);
+  const batchProgress = useAppStore((s) => s.batchProgress);
+  const setSplitMode = useAppStore((s) => s.setSplitMode);
+  const setRowsPerFile = useAppStore((s) => s.setRowsPerFile);
+  const setBatchProgress = useAppStore((s) => s.setBatchProgress);
+
+  const [exportSuccessMsg, setExportSuccessMsg] = useState<string | null>(null);
+  useEffect(() => {
+    if (!exportSuccessMsg) return;
+    const t = setTimeout(() => setExportSuccessMsg(null), 3000);
+    return () => clearTimeout(t);
+  }, [exportSuccessMsg]);
 
   const previewData = useAppStore((s) => s.previewData);
   const previewTab = useAppStore((s) => s.previewTab);
@@ -166,40 +186,131 @@ export default function ShopifyProcessorPage() {
 
   // Export functions
   const handleExportXlsx = useCallback(async () => {
-    const data = buildExportData();
-    if (data.length === 0) return;
-    const XLSX = await getXLSX();
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Shopify Output");
-    const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([buf], {
-      type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    });
     const date = new Date().toISOString().slice(0, 10);
-    const url = URL.createObjectURL(blob);
+    const XLSX = await getXLSX();
+
+    if (!splitMode) {
+      const data = buildExportData();
+      if (data.length === 0) return;
+      const ws = XLSX.utils.json_to_sheet(data);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Shopify Output");
+      const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+      const blob = new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `shopify_processed_${date}_${data.length}rows.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const rows = sortedRows.slice(0, exportLimit);
+    if (rows.length === 0) return;
+    const { default: JSZip } = await import("jszip");
+    const chunks = chunkArray(rows, rowsPerFile);
+    const totalFiles = chunks.length;
+    const totalRows = rows.length;
+    const pd = Math.max(2, String(totalFiles).length);
+    const rd = Math.max(3, String(totalRows).length);
+    const zip = new JSZip();
+
+    for (let i = 0; i < chunks.length; i++) {
+      setBatchProgress({ current: i + 1, total: totalFiles, phase: "building" });
+      await new Promise((r) => setTimeout(r, 0));
+      const startRow = i * rowsPerFile + 1;
+      const endRow = startRow + chunks[i].length - 1;
+      const filename = `shopify_processed_${date}_part${String(i + 1).padStart(pd, "0")}of${String(totalFiles).padStart(pd, "0")}_rows${String(startRow).padStart(rd, "0")}-${String(endRow).padStart(rd, "0")}.xlsx`;
+      const chunkData = chunks[i].map((row) => {
+        const obj: Record<string, unknown> = {};
+        for (const key of visibleColumns) {
+          if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || null;
+          else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || null;
+          else obj[key] = row[key];
+        }
+        return obj;
+      });
+      const ws = XLSX.utils.json_to_sheet(chunkData);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Shopify Output");
+      zip.file(filename, XLSX.write(wb, { bookType: "xlsx", type: "array" }));
+    }
+
+    const zipBlob = await zip.generateAsync(
+      { type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } },
+      (meta) => setBatchProgress({ current: Math.round(meta.percent), total: 100, phase: "compressing" })
+    );
+    setBatchProgress(null);
+    setExportSuccessMsg(`ZIP exported: ${totalFiles} files, ${totalRows} rows`);
+    const url = URL.createObjectURL(zipBlob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `shopify_processed_${date}_${data.length}rows.xlsx`;
+    a.download = `shopify_processed_${date}_${totalFiles}files_${totalRows}rows.zip`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [buildExportData]);
+  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg]);
 
   const handleExportCsv = useCallback(async () => {
-    const data = buildExportData();
-    if (data.length === 0) return;
-    const XLSX = await getXLSX();
-    const ws = XLSX.utils.json_to_sheet(data);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const date = new Date().toISOString().slice(0, 10);
-    const url = URL.createObjectURL(blob);
+    const XLSX = await getXLSX();
+
+    if (!splitMode) {
+      const data = buildExportData();
+      if (data.length === 0) return;
+      const ws = XLSX.utils.json_to_sheet(data);
+      const csv = XLSX.utils.sheet_to_csv(ws);
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `shopify_processed_${date}_${data.length}rows.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      return;
+    }
+
+    const rows = sortedRows.slice(0, exportLimit);
+    if (rows.length === 0) return;
+    const { default: JSZip } = await import("jszip");
+    const chunks = chunkArray(rows, rowsPerFile);
+    const totalFiles = chunks.length;
+    const totalRows = rows.length;
+    const pd = Math.max(2, String(totalFiles).length);
+    const rd = Math.max(3, String(totalRows).length);
+    const zip = new JSZip();
+
+    for (let i = 0; i < chunks.length; i++) {
+      setBatchProgress({ current: i + 1, total: totalFiles, phase: "building" });
+      await new Promise((r) => setTimeout(r, 0));
+      const startRow = i * rowsPerFile + 1;
+      const endRow = startRow + chunks[i].length - 1;
+      const filename = `shopify_processed_${date}_part${String(i + 1).padStart(pd, "0")}of${String(totalFiles).padStart(pd, "0")}_rows${String(startRow).padStart(rd, "0")}-${String(endRow).padStart(rd, "0")}.csv`;
+      const chunkData = chunks[i].map((row) => {
+        const obj: Record<string, unknown> = {};
+        for (const key of visibleColumns) {
+          if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || null;
+          else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || null;
+          else obj[key] = row[key];
+        }
+        return obj;
+      });
+      zip.file(filename, XLSX.utils.sheet_to_csv(XLSX.utils.json_to_sheet(chunkData)));
+    }
+
+    const zipBlob = await zip.generateAsync(
+      { type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } },
+      (meta) => setBatchProgress({ current: Math.round(meta.percent), total: 100, phase: "compressing" })
+    );
+    setBatchProgress(null);
+    setExportSuccessMsg(`ZIP exported: ${totalFiles} files, ${totalRows} rows`);
+    const url = URL.createObjectURL(zipBlob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `shopify_processed_${date}_${data.length}rows.csv`;
+    a.download = `shopify_processed_${date}_${totalFiles}files_${totalRows}rows.zip`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [buildExportData]);
+  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg]);
 
   // Count ready files
   const readyCount = useMemo(
@@ -283,7 +394,15 @@ export default function ShopifyProcessorPage() {
                 filteredTotal={sortedRows.length}
                 onSetExportRowLimit={setExportRowLimit}
                 onSetCustomRowLimit={setCustomRowLimit}
+                splitMode={splitMode}
+                rowsPerFile={rowsPerFile}
+                batchProgress={batchProgress}
+                onSetSplitMode={setSplitMode}
+                onSetRowsPerFile={setRowsPerFile}
               />
+              {exportSuccessMsg && (
+                <span className="text-[11px] text-green-600 font-mono">✓ {exportSuccessMsg}</span>
+              )}
               <SizeToggle value={tableSize} onChange={setTableSize} />
             </>
           )}
@@ -324,6 +443,37 @@ export default function ShopifyProcessorPage() {
               />
             </div>
             <p className="text-[11px] text-muted/70">{progress.message}</p>
+          </div>
+        )}
+
+        {/* Batch export progress */}
+        {batchProgress && (
+          <div className="mt-2.5 space-y-1">
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-muted font-mono">
+                {batchProgress.phase === "building" ? "Export" : "Compressing"}
+              </span>
+              <span className="text-accent font-mono">
+                {batchProgress.phase === "building"
+                  ? `${Math.round((batchProgress.current / batchProgress.total) * 100)}%`
+                  : `${batchProgress.current}%`}
+              </span>
+            </div>
+            <div className="h-1 bg-edge rounded-full overflow-hidden">
+              <div
+                className="h-full bg-accent rounded-full transition-all duration-300"
+                style={{
+                  width: batchProgress.phase === "building"
+                    ? `${(batchProgress.current / batchProgress.total) * 100}%`
+                    : `${batchProgress.current}%`,
+                }}
+              />
+            </div>
+            <p className="text-[11px] text-muted/70">
+              {batchProgress.phase === "building"
+                ? `Building file ${batchProgress.current} of ${batchProgress.total}...`
+                : `Compressing ZIP... ${batchProgress.current}%`}
+            </p>
           </div>
         )}
 
@@ -570,6 +720,11 @@ function ExportDropdown({
   filteredTotal,
   onSetExportRowLimit,
   onSetCustomRowLimit,
+  splitMode,
+  rowsPerFile,
+  batchProgress,
+  onSetSplitMode,
+  onSetRowsPerFile,
 }: {
   onExportXlsx: () => void;
   onExportCsv: () => void;
@@ -580,6 +735,11 @@ function ExportDropdown({
   filteredTotal: number;
   onSetExportRowLimit: (l: import("@/lib/types").ExportRowLimit) => void;
   onSetCustomRowLimit: (n: number) => void;
+  splitMode: boolean;
+  rowsPerFile: number;
+  batchProgress: BatchProgress | null;
+  onSetSplitMode: (v: boolean) => void;
+  onSetRowsPerFile: (n: number) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -610,17 +770,29 @@ function ExportDropdown({
     { value: "custom", label: "Custom…" },
   ];
 
+  const isBuilding = batchProgress?.phase === "building";
+
   return (
     <div className="relative">
       <Button
         ref={btnRef}
         variant="outline"
         size="sm"
-        onClick={() => setOpen((v) => !v)}
+        disabled={!!batchProgress}
+        onClick={() => !batchProgress && setOpen((v) => !v)}
       >
-        <Download size={12} className="mr-1.5" />
-        Export
-        <ChevronDown size={10} className="ml-1" />
+        {batchProgress ? (
+          <>
+            <Loader2 size={14} className="animate-spin mr-1.5" />
+            {isBuilding ? "Building ZIP..." : "Compressing..."}
+          </>
+        ) : (
+          <>
+            <Download size={12} className="mr-1.5" />
+            Export
+            <ChevronDown size={10} className="ml-1" />
+          </>
+        )}
       </Button>
       {open && (
         <div
@@ -663,19 +835,47 @@ function ExportDropdown({
             )}
           </div>
 
+          {/* Split mode */}
+          <div className="px-3 py-2 border-b border-edge">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-muted uppercase tracking-wider font-semibold">Split to ZIP</span>
+              <button
+                onClick={() => onSetSplitMode(!splitMode)}
+                className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors cursor-pointer ${splitMode ? "bg-accent" : "bg-edge"}`}
+              >
+                <span className={`inline-block h-3 w-3 rounded-full bg-white transition-transform ${splitMode ? "translate-x-3.5" : "translate-x-0.5"}`} />
+              </button>
+            </div>
+            {splitMode && (
+              <div className="mt-1.5 flex items-center gap-2">
+                <span className="text-[10px] text-muted">Rows per file:</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={rowsPerFile}
+                  onChange={(e) => onSetRowsPerFile(Math.max(1, Number(e.target.value) || 1))}
+                  className="w-16 bg-white border border-edge rounded px-2 py-0.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent/50"
+                />
+                {rowCount > 0 && (
+                  <span className="text-[10px] text-muted">→ {Math.ceil(rowCount / rowsPerFile)} files</span>
+                )}
+              </div>
+            )}
+          </div>
+
           <button
             onClick={() => { onExportXlsx(); setOpen(false); }}
             className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <FileSpreadsheet size={12} className="text-green-600" />
-            Export to Excel (.xlsx)
+            {splitMode ? "Export ZIP of .xlsx files" : "Export to Excel (.xlsx)"}
           </button>
           <button
             onClick={() => { onExportCsv(); setOpen(false); }}
             className="flex items-center gap-2 w-full px-3 py-2 text-xs hover:bg-slate-50 transition-colors cursor-pointer"
           >
             <Download size={12} className="text-blue-600" />
-            Export to CSV (.csv)
+            {splitMode ? "Export ZIP of .csv files" : "Export to CSV (.csv)"}
           </button>
         </div>
       )}
