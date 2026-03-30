@@ -3,44 +3,49 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { FixedSizeList as List } from "react-window";
 import { cn } from "@/lib/utils";
-import type { Rule, DiscountZone } from "@/lib/association-rules/types";
-import {
-  DiscountDecisionBadge,
-  ZoneDot,
-} from "./DiscountDecisionBadge";
-import { ArrowUp, ArrowDown, ArrowRight } from "lucide-react";
+import type { ItemRule } from "@/lib/association-rules/types";
+import { StockBadge } from "./StockBadge";
+import { ArrowUp, ArrowDown, ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
 
-const ROW_HEIGHT = 44;
+const ROW_HEIGHT = 48;
 
-type SortKey = "lift" | "confidence" | "support" | "count";
+type SortKey = "lift" | "confidence" | "support" | "count" | "revenueLift";
 
 interface Props {
-  rules: Rule[];
-  search: string;
-  zoneFilter: DiscountZone | "all";
-  onSearchChange: (s: string) => void;
-  onZoneFilterChange: (z: DiscountZone | "all") => void;
+  rules: ItemRule[];
+  hideOutOfStock: boolean;
+  sortByRevenue: boolean;
 }
 
-export function RulesTable({
-  rules,
-  search,
-  zoneFilter,
-  onSearchChange,
-  onZoneFilterChange,
-}: Props) {
+export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const outerRef = useRef<HTMLDivElement>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const [listHeight, setListHeight] = useState(400);
-  const [sortKey, setSortKey] = useState<SortKey>("lift");
+  const [sortKey, setSortKey] = useState<SortKey>(
+    sortByRevenue ? "revenueLift" : "confidence"
+  );
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [expandedIdx, setExpandedIdx] = useState<number | null>(null);
+
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
+  // Sync sort key with parent toggle
+  useEffect(() => {
+    setSortKey(sortByRevenue ? "revenueLift" : "confidence");
+  }, [sortByRevenue]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver((entries) => {
-      const h = entries[0].contentRect.height - 80;
+      const h = entries[0].contentRect.height - 90;
       setListHeight(Math.max(h, 100));
     });
     ro.observe(el);
@@ -59,29 +64,51 @@ export function RulesTable({
 
   const filtered = useMemo(() => {
     let data = rules;
-    if (zoneFilter !== "all") {
-      data = data.filter((r) => r.zone === zoneFilter);
+    if (hideOutOfStock) {
+      data = data.filter((r) => r.consequentStock.status !== "out_of_stock");
     }
     if (search) {
-      const q = search.toLowerCase();
-      data = data.filter(
-        (r) =>
-          r.antecedent.some((s) => s.toLowerCase().includes(q)) ||
-          r.consequent.some((s) => s.toLowerCase().includes(q)) ||
-          r.antecedentNames.some((s) => s.toLowerCase().includes(q)) ||
-          r.consequentNames.some((s) => s.toLowerCase().includes(q))
-      );
+      const isMultiSku = search.includes(",");
+
+      if (isMultiSku) {
+        // Multi-SKU mode: comma-separated prefixes, OR logic, startsWith
+        const prefixes = search
+          .split(",")
+          .map((s) => s.trim().toLowerCase())
+          .filter(Boolean);
+        if (prefixes.length > 0) {
+          data = data.filter((r) => {
+            const allSkus = [...r.antecedent, ...r.consequent];
+            return prefixes.some((prefix) =>
+              allSkus.some((sku) => sku.toLowerCase().startsWith(prefix))
+            );
+          });
+        }
+      } else {
+        // Global search: SKU, name, category — includes
+        const q = search.trim().toLowerCase();
+        if (q) {
+          data = data.filter(
+            (r) =>
+              r.antecedent.some((s) => s.toLowerCase().includes(q)) ||
+              r.consequent.some((s) => s.toLowerCase().includes(q)) ||
+              r.antecedentNames.some((s) => s.toLowerCase().includes(q)) ||
+              r.consequentNames.some((s) => s.toLowerCase().includes(q)) ||
+              r.consequentItemGroup.toLowerCase().includes(q) ||
+              r.consequentSubCategory.toLowerCase().includes(q)
+          );
+        }
+      }
     }
     return data;
-  }, [rules, zoneFilter, search]);
+  }, [rules, hideOutOfStock, search]);
 
   const sorted = useMemo(() => {
-    const s = [...filtered].sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       const av = a[sortKey];
       const bv = b[sortKey];
       return sortDir === "desc" ? bv - av : av - bv;
     });
-    return s;
   }, [filtered, sortKey, sortDir]);
 
   const toggleSort = (key: SortKey) => {
@@ -94,137 +121,142 @@ export function RulesTable({
   };
 
   const COLS = [
-    { key: "antecedent" as const, label: "If buy (A)", width: 240 },
-    { key: "arrow" as const, label: "", width: 30 },
-    { key: "consequent" as const, label: "Then buy (B)", width: 240 },
-    { key: "support" as const, label: "Support", width: 90, sortable: true },
-    { key: "confidence" as const, label: "Confidence", width: 100, sortable: true },
-    { key: "lift" as const, label: "Lift", width: 80, sortable: true },
-    { key: "count" as const, label: "Count", width: 70, sortable: true },
-    { key: "zone" as const, label: "Zone", width: 180 },
-    { key: "discount" as const, label: "Disc %", width: 70 },
-  ];
+    { key: "antecedent", label: "If customer buys", width: 220 },
+    { key: "arrow", label: "", width: 28 },
+    { key: "consequent", label: "Recommend", width: 220 },
+    { key: "confidence", label: "Confidence", width: 95, sortable: true },
+    { key: "lift", label: "Lift", width: 75, sortable: true },
+    { key: "revenueLift", label: "Rev. Lift", width: 95, sortable: true },
+    { key: "stock", label: "Stock", width: 140 },
+    { key: "support", label: "Support", width: 80, sortable: true },
+    { key: "count", label: "Count", width: 65, sortable: true },
+  ] as const;
   const TOTAL_WIDTH = COLS.reduce((s, c) => s + c.width, 0);
 
   const Row = useCallback(
     ({ index, style }: { index: number; style: React.CSSProperties }) => {
       const r = sorted[index];
+      const isOOS = r.consequentStock.status === "out_of_stock";
+      const isExpanded = expandedIdx === index;
+
       return (
-        <div
-          style={style}
-          className="flex items-center border-b border-edge/50 text-xs hover:bg-surface-hover transition-colors"
-        >
-          <div className="flex items-center" style={{ minWidth: TOTAL_WIDTH }}>
-            {/* Antecedent */}
-            <div className="px-2 truncate shrink-0" style={{ width: 240 }}>
-              <span className="font-mono text-[11px]">
-                {r.antecedent.join(", ")}
-              </span>
-              <br />
-              <span className="text-[10px] text-muted truncate">
-                {r.antecedentNames.join(", ")}
-              </span>
-            </div>
-            {/* Arrow */}
+        <div style={style}>
+          <div
+            className={cn(
+              "flex items-center border-b border-edge/50 text-xs transition-colors cursor-pointer h-full",
+              isOOS ? "opacity-40" : "hover:bg-surface-hover"
+            )}
+            onClick={() => setExpandedIdx(isExpanded ? null : index)}
+          >
             <div
-              className="flex items-center justify-center shrink-0"
-              style={{ width: 30 }}
+              className="flex items-center"
+              style={{ minWidth: TOTAL_WIDTH }}
             >
-              <ArrowRight size={12} className="text-muted" />
-            </div>
-            {/* Consequent */}
-            <div className="px-2 truncate shrink-0" style={{ width: 240 }}>
-              <span className="font-mono text-[11px]">
-                {r.consequent.join(", ")}
-              </span>
-              <br />
-              <span className="text-[10px] text-muted truncate">
-                {r.consequentNames.join(", ")}
-              </span>
-            </div>
-            {/* Support */}
-            <div
-              className="px-2 font-mono text-xs text-center shrink-0"
-              style={{ width: 90 }}
-            >
-              {(r.support * 100).toFixed(1)}%
-            </div>
-            {/* Confidence */}
-            <div
-              className="px-2 font-mono text-xs text-center shrink-0"
-              style={{ width: 100 }}
-            >
-              {(r.confidence * 100).toFixed(1)}%
-            </div>
-            {/* Lift */}
-            <div
-              className={cn(
-                "px-2 font-mono text-xs text-center font-semibold shrink-0",
-                r.lift >= 1.5
-                  ? "text-emerald-600"
-                  : r.lift >= 1.2
-                    ? "text-amber-600"
-                    : "text-primary"
-              )}
-              style={{ width: 80 }}
-            >
-              {r.lift.toFixed(2)}
-            </div>
-            {/* Count */}
-            <div
-              className="px-2 font-mono text-xs text-center shrink-0"
-              style={{ width: 70 }}
-            >
-              {r.count}
-            </div>
-            {/* Zone */}
-            <div className="px-2 shrink-0" style={{ width: 180 }}>
-              <DiscountDecisionBadge zone={r.zone} />
-            </div>
-            {/* Discount */}
-            <div
-              className="px-2 font-mono text-xs text-center shrink-0"
-              style={{ width: 70 }}
-            >
-              {r.recommendedDiscountPct > 0
-                ? `${r.recommendedDiscountPct}%`
-                : "—"}
+              {/* Expand indicator */}
+              <div className="w-5 flex items-center justify-center shrink-0">
+                {isExpanded ? (
+                  <ChevronDown size={10} className="text-muted" />
+                ) : (
+                  <ChevronRight size={10} className="text-muted" />
+                )}
+              </div>
+              {/* Antecedent */}
+              <div
+                className="px-1.5 truncate shrink-0"
+                style={{ width: 220 - 5 }}
+              >
+                <span className="font-mono text-[11px]">
+                  {r.antecedent.join(", ")}
+                </span>
+                <br />
+                <span className="text-[10px] text-muted truncate">
+                  {r.antecedentNames.join(", ")}
+                </span>
+              </div>
+              {/* Arrow */}
+              <div
+                className="flex items-center justify-center shrink-0"
+                style={{ width: 28 }}
+              >
+                <ArrowRight size={12} className="text-muted" />
+              </div>
+              {/* Consequent */}
+              <div className="px-1.5 truncate shrink-0" style={{ width: 220 }}>
+                <span className="font-mono text-[11px]">
+                  {r.consequent.join(", ")}
+                </span>
+                <br />
+                <span className="text-[10px] text-muted truncate">
+                  {r.consequentNames.join(", ")}
+                </span>
+              </div>
+              {/* Confidence */}
+              <div
+                className="px-1.5 font-mono text-xs text-center shrink-0"
+                style={{ width: 95 }}
+              >
+                {(r.confidence * 100).toFixed(1)}%
+              </div>
+              {/* Lift */}
+              <div
+                className={cn(
+                  "px-1.5 font-mono text-xs text-center font-semibold shrink-0",
+                  r.lift >= 2
+                    ? "text-emerald-600"
+                    : r.lift >= 1.5
+                      ? "text-amber-600"
+                      : "text-primary"
+                )}
+                style={{ width: 75 }}
+              >
+                {r.lift.toFixed(2)}
+              </div>
+              {/* Revenue Lift */}
+              <div
+                className="px-1.5 font-mono text-xs text-center shrink-0"
+                style={{ width: 95 }}
+              >
+                {r.revenueLift.toFixed(0)}
+              </div>
+              {/* Stock */}
+              <div className="px-1.5 shrink-0" style={{ width: 140 }}>
+                <StockBadge stock={r.consequentStock} />
+              </div>
+              {/* Support */}
+              <div
+                className="px-1.5 font-mono text-xs text-center shrink-0"
+                style={{ width: 80 }}
+              >
+                {(r.support * 100).toFixed(2)}%
+              </div>
+              {/* Count */}
+              <div
+                className="px-1.5 font-mono text-xs text-center shrink-0"
+                style={{ width: 65 }}
+              >
+                {r.count}
+              </div>
             </div>
           </div>
         </div>
       );
     },
-    [sorted, TOTAL_WIDTH]
+    [sorted, TOTAL_WIDTH, expandedIdx]
   );
+
+  // Expanded detail panel (shown below the list when a row is selected)
+  const expandedRule = expandedIdx !== null ? sorted[expandedIdx] : null;
 
   return (
     <div ref={containerRef} className="flex-1 flex flex-col min-h-0">
-      {/* Filter bar */}
+      {/* Search bar */}
       <div className="shrink-0 flex items-center gap-3 px-4 py-2 border-b border-edge bg-surface/50">
         <input
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search SKU or product..."
-          className="bg-white border border-edge rounded px-2.5 py-1 text-xs font-mono w-56 focus:outline-none focus:ring-1 focus:ring-accent/50"
+          value={searchInput}
+          onChange={(e) => setSearchInput(e.target.value)}
+          placeholder="Search SKU or product... (comma = multi-SKU)"
+          className="bg-white border border-edge rounded px-2.5 py-1 text-xs font-mono w-72 focus:outline-none focus:ring-1 focus:ring-accent/50"
         />
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] text-muted">Zone:</span>
-          {(["all", "green", "yellow", "purple", "gray"] as const).map((z) => (
-            <button
-              key={z}
-              onClick={() => onZoneFilterChange(z)}
-              className={cn(
-                "flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium border transition-colors",
-                zoneFilter === z
-                  ? "bg-accent/10 text-accent border-accent/30"
-                  : "bg-white text-muted border-edge hover:border-muted"
-              )}
-            >
-              {z !== "all" && <ZoneDot zone={z} />}
-              {z === "all" ? "All" : z.charAt(0).toUpperCase() + z.slice(1)}
-            </button>
-          ))}
-        </div>
         <span className="text-[11px] text-muted font-mono ml-auto">
           {sorted.length} / {rules.length} rules
         </span>
@@ -236,12 +268,12 @@ export function RulesTable({
         className="overflow-hidden border-b border-edge bg-surface shrink-0"
       >
         <div
-          className="flex items-center h-9"
+          className="flex items-center h-8"
           style={{ minWidth: TOTAL_WIDTH }}
         >
+          <div className="w-5 shrink-0" />
           {COLS.map((col) => {
-            const isSortable =
-              "sortable" in col && (col as { sortable?: boolean }).sortable === true;
+            const isSortable = "sortable" in col && col.sortable;
             const isSorted = isSortable && sortKey === col.key;
             return (
               <button
@@ -251,7 +283,7 @@ export function RulesTable({
                 }
                 disabled={!isSortable}
                 className={cn(
-                  "flex items-center gap-1 px-2 text-[11px] font-semibold text-muted uppercase tracking-wider shrink-0",
+                  "flex items-center gap-1 px-1.5 text-[10px] font-semibold text-muted uppercase tracking-wider shrink-0",
                   isSortable
                     ? "hover:text-primary cursor-pointer"
                     : "cursor-default"
@@ -261,9 +293,9 @@ export function RulesTable({
                 <span className="truncate">{col.label}</span>
                 {isSorted &&
                   (sortDir === "desc" ? (
-                    <ArrowDown size={10} className="text-accent shrink-0" />
+                    <ArrowDown size={9} className="text-accent shrink-0" />
                   ) : (
-                    <ArrowUp size={10} className="text-accent shrink-0" />
+                    <ArrowUp size={9} className="text-accent shrink-0" />
                   ))}
               </button>
             );
@@ -275,13 +307,15 @@ export function RulesTable({
       {sorted.length === 0 ? (
         <div className="flex-1 flex items-center justify-center text-muted text-sm">
           <p className="text-xs">
-            {rules.length === 0 ? "No rules generated yet" : "No matching rules"}
+            {rules.length === 0
+              ? "No rules generated yet"
+              : "No matching rules"}
           </p>
         </div>
       ) : (
         <List
           outerRef={outerRef}
-          height={listHeight}
+          height={listHeight - (expandedRule ? 100 : 0)}
           width="100%"
           itemSize={ROW_HEIGHT}
           itemCount={sorted.length}
@@ -289,6 +323,50 @@ export function RulesTable({
         >
           {Row}
         </List>
+      )}
+
+      {/* Expanded detail panel */}
+      {expandedRule && (
+        <div className="shrink-0 border-t border-edge bg-slate-50 px-4 py-3">
+          <div className="flex items-start gap-6 text-xs">
+            <div className="w-16 h-16 rounded bg-slate-200 flex items-center justify-center text-muted text-[10px]">
+              IMG
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              <p className="font-semibold text-primary">
+                {expandedRule.consequentNames.join(", ")}
+              </p>
+              <p className="text-muted font-mono text-[11px]">
+                {expandedRule.consequent.join(", ")}
+              </p>
+              <div className="flex gap-4 text-[11px] text-muted">
+                <span>
+                  Group:{" "}
+                  <strong className="text-primary">
+                    {expandedRule.consequentItemGroup || "—"}
+                  </strong>
+                </span>
+                <span>
+                  Sub-category:{" "}
+                  <strong className="text-primary">
+                    {expandedRule.consequentSubCategory || "—"}
+                  </strong>
+                </span>
+                <span>
+                  Sales Price:{" "}
+                  <strong className="text-primary">
+                    {expandedRule.consequentSalesPrice > 0
+                      ? `\u20AC ${expandedRule.consequentSalesPrice.toFixed(2)}`
+                      : "—"}
+                  </strong>
+                </span>
+              </div>
+            </div>
+            <div>
+              <StockBadge stock={expandedRule.consequentStock} />
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Footer */}

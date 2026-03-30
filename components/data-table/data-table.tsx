@@ -3,7 +3,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { FixedSizeList as List } from "react-window";
-import { cn, formatPrice, formatInteger } from "@/lib/utils";
+import { cn, formatPrice, formatInteger, buildSearchMatcher } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
 import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS, TABLE_SIZE_CONFIG, type OutputRow } from "@/lib/types";
 import { StatusBadge, PolicyBadge } from "@/components/status-badge/status-badge";
@@ -96,6 +96,7 @@ export function DataTable() {
   const etaFilter = useAppStore((s) => s.etaFilter);
   const discountFilter = useAppStore((s) => s.discountFilter);
   const policyFilter = useAppStore((s) => s.policyFilter);
+  const search = useAppStore((s) => s.search);
   const sortColumn = useAppStore((s) => s.sortColumn);
   const sortDirection = useAppStore((s) => s.sortDirection);
   const toggleSort = useAppStore((s) => s.toggleSort);
@@ -144,8 +145,14 @@ export function DataTable() {
     if (policyFilter !== "all") {
       data = data.filter((r) => r["Variant Inventory Policy"] === policyFilter);
     }
+    const matcher = buildSearchMatcher(search);
+    if (matcher) {
+      data = data.filter((r) =>
+        matcher([r["Variant SKU"], r.Title, r.Reference])
+      );
+    }
     return data;
-  }, [results, statusFilter, etaFilter, discountFilter, policyFilter]);
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, search]);
 
   // Sort data with nulls-to-bottom
   const sortedData = useMemo(() => {

@@ -1,52 +1,70 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useState, useMemo } from "react";
+import { useRef, useCallback, useEffect, useState } from "react";
 import type {
-  Rule,
-  MiningStats,
-  MiningParams,
-  FilterParams,
+  AnalysisResults,
+  WorkerFilters,
   WorkerMessage,
-  DiscountZone,
+  FileSlot,
+  AnalysisTab,
 } from "@/lib/association-rules/types";
-import {
-  DEFAULT_MINING_PARAMS,
-  DEFAULT_FILTER_PARAMS,
-} from "@/lib/association-rules/types";
-import { getXLSX } from "@/lib/parsers";
+import { DEFAULT_WORKER_FILTERS, EMPTY_FILE_SLOT } from "@/lib/association-rules/types";
+import { parseFileBuffer } from "@/lib/parsers";
 import { FileUploadZone } from "@/components/association-rules/FileUploadZone";
-import { FilterPanel } from "@/components/association-rules/FilterPanel";
+import { RuleControls } from "@/components/association-rules/RuleControls";
 import { RulesTable } from "@/components/association-rules/RulesTable";
-import { BundleCards } from "@/components/association-rules/BundleCards";
-import { MetricsSummary } from "@/components/association-rules/MetricsSummary";
+import { CategoryHeatmap } from "@/components/association-rules/CategoryHeatmap";
+import { RevenueOpportunities } from "@/components/association-rules/RevenueOpportunities";
+import { BundleGrid } from "@/components/association-rules/BundleGrid";
+import { KpiBar } from "@/components/association-rules/KpiBar";
 import { ProgressBar } from "@/components/association-rules/ProgressBar";
 import { Button } from "@/components/ui/button";
-import { Play, Download, Loader2 } from "lucide-react";
+import { Play, Loader2 } from "lucide-react";
 
 type ProcessingState = "idle" | "processing" | "done" | "error";
-type Tab = "rules" | "bundles";
+
+const TABS: { key: AnalysisTab; label: string }[] = [
+  { key: "recommendations", label: "Item Recommendations" },
+  { key: "categories", label: "Category Insights" },
+  { key: "revenue", label: "Revenue Opportunities" },
+  { key: "bundles", label: "Bundle / Complete the Look" },
+];
 
 export default function AssociationRulesPage() {
   const workerRef = useRef<Worker | null>(null);
 
-  const [file, setFile] = useState<File | null>(null);
-  const [processingState, setProcessingState] = useState<ProcessingState>("idle");
+  // ── File state ───────────────────────────────────────────────────────────
+  const [salesSlot, setSalesSlot] = useState<FileSlot>(EMPTY_FILE_SLOT);
+  const [productSlot, setProductSlot] = useState<FileSlot>(EMPTY_FILE_SLOT);
+  const [stockSlot, setStockSlot] = useState<FileSlot>(EMPTY_FILE_SLOT);
+
+  // Parsed rows kept in refs to avoid re-renders on large data
+  const salesRowsRef = useRef<Record<string, string>[]>([]);
+  const productRowsRef = useRef<Record<string, string>[]>([]);
+  const stockRowsRef = useRef<Record<string, string>[]>([]);
+
+  // ── Processing state ─────────────────────────────────────────────────────
+  const [processingState, setProcessingState] =
+    useState<ProcessingState>("idle");
   const [progress, setProgress] = useState<{
     step: string;
     pct: number;
     message: string;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [rules, setRules] = useState<Rule[]>([]);
-  const [stats, setStats] = useState<MiningStats | null>(null);
-  const [channels, setChannels] = useState<string[]>([]);
-  const [params, setParams] = useState<MiningParams>(DEFAULT_MINING_PARAMS);
-  const [filters, setFilters] = useState<FilterParams>(DEFAULT_FILTER_PARAMS);
-  const [tab, setTab] = useState<Tab>("rules");
-  const [search, setSearch] = useState("");
-  const [zoneFilter, setZoneFilter] = useState<DiscountZone | "all">("all");
+  const [results, setResults] = useState<AnalysisResults | null>(null);
 
-  // Initialize worker
+  // ── Filters ──────────────────────────────────────────────────────────────
+  const [filters, setFilters] = useState<WorkerFilters>(DEFAULT_WORKER_FILTERS);
+
+  // Display-only filters (applied client-side, no re-run needed)
+  const [hideOutOfStock, setHideOutOfStock] = useState(true);
+  const [sortByRevenue, setSortByRevenue] = useState(false);
+
+  // ── UI state ─────────────────────────────────────────────────────────────
+  const [tab, setTab] = useState<AnalysisTab>("recommendations");
+
+  // ── Worker init ──────────────────────────────────────────────────────────
   useEffect(() => {
     workerRef.current = new Worker(
       new URL("../../workers/association.worker.ts", import.meta.url)
@@ -56,11 +74,8 @@ export default function AssociationRulesPage() {
       const msg = e.data;
       if (msg.type === "progress") {
         setProgress({ step: msg.step, pct: msg.pct, message: msg.message });
-      } else if (msg.type === "channels") {
-        setChannels(msg.channels);
       } else if (msg.type === "done") {
-        setRules(msg.rules);
-        setStats(msg.stats);
+        setResults(msg.results);
         setProcessingState("done");
         setProgress({ step: "Complete", pct: 100, message: "Done!" });
       } else if (msg.type === "error") {
@@ -79,94 +94,100 @@ export default function AssociationRulesPage() {
     };
   }, []);
 
-  const canRun = file !== null && processingState !== "processing";
+  // ── File handlers ────────────────────────────────────────────────────────
+
+  const handleFile = useCallback(
+    async (
+      type: "sales" | "product" | "stock",
+      file: File
+    ) => {
+      const setSlot =
+        type === "sales"
+          ? setSalesSlot
+          : type === "product"
+            ? setProductSlot
+            : setStockSlot;
+      const rowsRef =
+        type === "sales"
+          ? salesRowsRef
+          : type === "product"
+            ? productRowsRef
+            : stockRowsRef;
+
+      setSlot({ file, status: "parsing", rowCount: 0, error: null });
+
+      try {
+        const buffer = await file.arrayBuffer();
+        const rows = await parseFileBuffer(buffer);
+        rowsRef.current = rows as Record<string, string>[];
+        setSlot({
+          file,
+          status: "parsed",
+          rowCount: rows.length,
+          error: null,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Parse error";
+        rowsRef.current = [];
+        setSlot({ file, status: "error", rowCount: 0, error: msg });
+      }
+    },
+    []
+  );
+
+  const handleRemoveFile = useCallback(
+    (type: "sales" | "product" | "stock") => {
+      const setSlot =
+        type === "sales"
+          ? setSalesSlot
+          : type === "product"
+            ? setProductSlot
+            : setStockSlot;
+      const rowsRef =
+        type === "sales"
+          ? salesRowsRef
+          : type === "product"
+            ? productRowsRef
+            : stockRowsRef;
+
+      setSlot(EMPTY_FILE_SLOT);
+      rowsRef.current = [];
+    },
+    []
+  );
+
+  // ── Run analysis ─────────────────────────────────────────────────────────
+
+  const allParsed =
+    salesSlot.status === "parsed" &&
+    productSlot.status === "parsed" &&
+    stockSlot.status === "parsed";
+  const canRun = allParsed && processingState !== "processing";
 
   const handleRun = useCallback(() => {
-    if (!canRun || !workerRef.current || !file) return;
+    if (!canRun || !workerRef.current) return;
     setProcessingState("processing");
     setProgress(null);
     setError(null);
-    setRules([]);
-    setStats(null);
-    workerRef.current.postMessage({ type: "start", file, params, filters });
-  }, [canRun, file, params, filters]);
+    setResults(null);
+    workerRef.current.postMessage({
+      type: "start",
+      salesRows: salesRowsRef.current,
+      productRows: productRowsRef.current,
+      stockRows: stockRowsRef.current,
+      filters,
+    });
+  }, [canRun, filters]);
 
-  const handleRemoveFile = useCallback(() => {
-    setFile(null);
-    setProcessingState("idle");
-    setProgress(null);
-    setError(null);
-    setRules([]);
-    setStats(null);
-    setChannels([]);
-  }, []);
+  // Available item groups from results (for filter checkboxes)
+  const availableItemGroups = results?.itemGroups ?? [];
 
-  const fileStatus = useMemo(() => {
-    if (!file) return "empty" as const;
-    if (processingState === "done") return "done" as const;
-    if (processingState === "processing") return "processing" as const;
-    return "ready" as const;
-  }, [file, processingState]);
-
-  // Export rules CSV
-  const handleExportRules = useCallback(async () => {
-    if (rules.length === 0) return;
-    const XLSX = await getXLSX();
-    const data = rules.map((r) => ({
-      Antecedent: r.antecedent.join(", "),
-      "Antecedent Names": r.antecedentNames.join(", "),
-      Consequent: r.consequent.join(", "),
-      "Consequent Names": r.consequentNames.join(", "),
-      "Support %": +(r.support * 100).toFixed(2),
-      "Confidence %": +(r.confidence * 100).toFixed(2),
-      Lift: +r.lift.toFixed(3),
-      Count: r.count,
-      Zone: r.zone,
-      "Recommended Discount %": r.recommendedDiscountPct,
-      Action: r.action,
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "association_rules.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [rules]);
-
-  // Export bundle suggestions
-  const handleExportBundles = useCallback(async () => {
-    const bundleRules = rules.filter(
-      (r) => r.zone === "green" || r.zone === "yellow"
-    );
-    if (bundleRules.length === 0) return;
-    const XLSX = await getXLSX();
-    const data = bundleRules.map((r) => ({
-      SKU_A: r.antecedent.join(", "),
-      SKU_B: r.consequent.join(", "),
-      "Bundle Name": `${r.antecedentNames[0] || r.antecedent[0]} + ${r.consequentNames[0] || r.consequent[0]}`,
-      Confidence: +(r.confidence * 100).toFixed(1),
-      Lift: +r.lift.toFixed(2),
-      "Discount Zone": r.zone,
-      "Recommended Discount %": r.recommendedDiscountPct,
-    }));
-    const ws = XLSX.utils.json_to_sheet(data);
-    const csv = XLSX.utils.sheet_to_csv(ws);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "bundle_suggestions.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [rules]);
+  // ── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="flex flex-col h-full">
-      {/* ── Top Bar ───────────────────────────────────────────────── */}
-      <div className="shrink-0 border-b border-edge bg-surface px-4 py-3">
+      {/* ── Top Bar ─────────────────────────────────────────────────────── */}
+      <div className="shrink-0 border-b border-edge bg-surface px-4 py-3 space-y-2.5">
         <div className="flex items-center gap-3 flex-wrap">
           <h1 className="text-sm font-semibold text-primary tracking-tight mr-2">
             Association Rules
@@ -186,102 +207,104 @@ export default function AssociationRulesPage() {
             {processingState === "processing" ? "Mining..." : "Run Analysis"}
           </Button>
 
-          {rules.length > 0 && (
-            <>
-              <Button variant="outline" size="sm" onClick={handleExportRules}>
-                <Download size={12} className="mr-1.5" />
-                Export Rules
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleExportBundles}>
-                <Download size={12} className="mr-1.5" />
-                Export Bundles
-              </Button>
-            </>
+          {!allParsed && (
+            <span className="text-[11px] text-muted">
+              Upload all 3 files to enable analysis
+            </span>
           )}
         </div>
 
+        {/* File upload zones */}
+        <FileUploadZone
+          salesSlot={salesSlot}
+          productSlot={productSlot}
+          stockSlot={stockSlot}
+          onSalesFile={(f) => handleFile("sales", f)}
+          onProductFile={(f) => handleFile("product", f)}
+          onStockFile={(f) => handleFile("stock", f)}
+          onRemoveSales={() => handleRemoveFile("sales")}
+          onRemoveProduct={() => handleRemoveFile("product")}
+          onRemoveStock={() => handleRemoveFile("stock")}
+        />
+
         {/* Progress */}
         {processingState === "processing" && progress && (
-          <div className="mt-2.5">
-            <ProgressBar
-              step={progress.step}
-              pct={progress.pct}
-              message={progress.message}
-            />
-          </div>
+          <ProgressBar
+            step={progress.step}
+            pct={progress.pct}
+            message={progress.message}
+          />
         )}
 
         {/* Error */}
         {error && (
-          <div className="mt-2 px-3 py-2 rounded bg-red-50 border border-red-200 text-red-600 text-xs font-mono">
+          <div className="px-3 py-2 rounded bg-red-50 border border-red-200 text-red-600 text-xs font-mono">
             {error}
           </div>
         )}
 
-        {/* Stats */}
-        {stats && (
-          <div className="mt-2.5">
-            <MetricsSummary stats={stats} />
-          </div>
-        )}
+        {/* KPI bar */}
+        {results && <KpiBar stats={results.stats} />}
       </div>
 
-      {/* ── Main Content ──────────────────────────────────────────── */}
+      {/* ── Main Content ──────────────────────────────────────────────── */}
       <div className="flex flex-1 min-h-0">
-        {/* Left panel: Upload + Filters */}
-        <div className="w-[280px] shrink-0 border-r border-edge bg-surface/50 p-3 overflow-y-auto space-y-3">
-          <FileUploadZone
-            file={file}
-            onFile={setFile}
-            onRemove={handleRemoveFile}
-            status={fileStatus}
-          />
-          <FilterPanel
-            params={params}
+        {/* Left panel: Controls */}
+        <div className="w-[240px] shrink-0 border-r border-edge bg-surface/50 p-3 overflow-y-auto">
+          <RuleControls
             filters={filters}
-            channels={channels}
-            onParamsChange={setParams}
             onFiltersChange={setFilters}
+            availableItemGroups={availableItemGroups}
+            hideOutOfStock={hideOutOfStock}
+            onHideOutOfStockChange={setHideOutOfStock}
+            sortByRevenue={sortByRevenue}
+            onSortByRevenueChange={setSortByRevenue}
           />
         </div>
 
         {/* Right panel: Tabs */}
         <div className="flex-1 flex flex-col min-w-0">
           {/* Tab bar */}
-          {rules.length > 0 && (
-            <div className="shrink-0 flex items-center gap-0 border-b border-edge bg-surface">
-              {(
-                [
-                  { key: "rules" as const, label: "Rules Table" },
-                  { key: "bundles" as const, label: "Bundle Cards" },
-                ] as const
-              ).map((t) => (
-                <button
-                  key={t.key}
-                  onClick={() => setTab(t.key)}
-                  className={`px-4 py-2 text-xs font-semibold transition-colors border-b-2 ${
-                    tab === t.key
-                      ? "text-accent border-accent"
-                      : "text-muted border-transparent hover:text-primary"
-                  }`}
-                >
-                  {t.label}
-                </button>
-              ))}
-            </div>
-          )}
+          <div className="shrink-0 flex items-center gap-0 border-b border-edge bg-surface">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => setTab(t.key)}
+                className={`px-4 py-2 text-xs font-semibold transition-colors border-b-2 ${
+                  tab === t.key
+                    ? "text-accent border-accent"
+                    : "text-muted border-transparent hover:text-primary"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
 
           {/* Tab content */}
-          {tab === "rules" ? (
+          {tab === "recommendations" && (
             <RulesTable
-              rules={rules}
-              search={search}
-              zoneFilter={zoneFilter}
-              onSearchChange={setSearch}
-              onZoneFilterChange={setZoneFilter}
+              rules={results?.itemRules ?? []}
+              hideOutOfStock={hideOutOfStock}
+              sortByRevenue={sortByRevenue}
             />
-          ) : (
-            <BundleCards rules={rules} />
+          )}
+          {tab === "categories" && (
+            <CategoryHeatmap
+              itemGroupMatrix={results?.itemGroupMatrix ?? []}
+              subCategoryMatrix={results?.subCategoryMatrix ?? []}
+              crossCategoryRules={results?.crossCategoryRules ?? []}
+            />
+          )}
+          {tab === "revenue" && (
+            <RevenueOpportunities
+              rules={results?.itemRules ?? []}
+              salespersons={results?.salespersons ?? []}
+              salespersonItems={results?.salespersonItems ?? {}}
+            />
+          )}
+          {tab === "bundles" && (
+            <BundleGrid bundles={results?.bundles ?? []} />
           )}
         </div>
       </div>

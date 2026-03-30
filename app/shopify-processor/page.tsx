@@ -5,7 +5,7 @@ import { useAppStore } from "@/lib/store";
 import type { FileKey, OutputRow, WorkerResponse, BatchProgress } from "@/lib/types";
 import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS } from "@/lib/types";
 import { parseFileBuffer, previewFileBuffer, getXLSX } from "@/lib/parsers";
-import { formatPrice, formatInteger } from "@/lib/utils";
+import { formatPrice, formatInteger, buildSearchMatcher } from "@/lib/utils";
 import { FileDropzone } from "@/components/file-dropzone/file-dropzone";
 import { DataTable } from "@/components/data-table/data-table";
 import { PreviewTable } from "@/components/preview-table/preview-table";
@@ -41,6 +41,8 @@ export default function ShopifyProcessorPage() {
   const etaFilter = useAppStore((s) => s.etaFilter);
   const discountFilter = useAppStore((s) => s.discountFilter);
   const policyFilter = useAppStore((s) => s.policyFilter);
+  const search = useAppStore((s) => s.search);
+  const setSearch = useAppStore((s) => s.setSearch);
   const setStatusFilter = useAppStore((s) => s.setStatusFilter);
   const setEtaFilter = useAppStore((s) => s.setEtaFilter);
   const setDiscountFilter = useAppStore((s) => s.setDiscountFilter);
@@ -77,6 +79,13 @@ export default function ShopifyProcessorPage() {
   const allReady = useAppStore((s) => s.allFilesReady);
   const canRun = allReady() && processingState !== "processing";
 
+  // Debounced search: local input → store after 300ms
+  const [searchInput, setSearchInput] = useState(search);
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(id);
+  }, [searchInput, setSearch]);
+
   // Filtered rows (same logic as DataTable — derived for export)
   const filteredRows = useMemo(() => {
     let data = results;
@@ -86,8 +95,14 @@ export default function ShopifyProcessorPage() {
     if (discountFilter === "yes") data = data.filter((r) => r["Discount %"] !== null);
     else if (discountFilter === "no") data = data.filter((r) => r["Discount %"] === null);
     if (policyFilter !== "all") data = data.filter((r) => r["Variant Inventory Policy"] === policyFilter);
+    const matcher = buildSearchMatcher(search);
+    if (matcher) {
+      data = data.filter((r) =>
+        matcher([r["Variant SKU"], r.Title, r.Reference])
+      );
+    }
     return data;
-  }, [results, statusFilter, etaFilter, discountFilter, policyFilter]);
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, search]);
 
   // Sorted rows (for export — same sort as DataTable)
   const sortedRows = useMemo(() => {
@@ -114,7 +129,7 @@ export default function ShopifyProcessorPage() {
     return Math.min(exportRowLimit, sortedRows.length);
   }, [exportRowLimit, customRowLimit, sortedRows.length]);
 
-  const isFiltered = statusFilter !== "all" || etaFilter !== "all" || discountFilter !== "all" || policyFilter !== "all";
+  const isFiltered = statusFilter !== "all" || etaFilter !== "all" || discountFilter !== "all" || policyFilter !== "all" || search !== "";
 
   // Initialize worker
   useEffect(() => {
@@ -405,6 +420,16 @@ export default function ShopifyProcessorPage() {
               )}
               <SizeToggle value={tableSize} onChange={setTableSize} />
             </>
+          )}
+
+          {/* Search */}
+          {results.length > 0 && (
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search SKU or title... (comma = multi-SKU)"
+              className="bg-white border border-edge rounded px-2.5 py-1 text-xs font-mono w-64 focus:outline-none focus:ring-1 focus:ring-accent/50"
+            />
           )}
 
           {/* Row & column summary */}

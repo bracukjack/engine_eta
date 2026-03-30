@@ -1,4 +1,16 @@
-export interface Rule {
+// ── Stock ────────────────────────────────────────────────────────────────────
+
+export type StockStatus = "in_stock" | "low_stock" | "out_of_stock" | "incoming";
+
+export interface StockInfo {
+  availableStock: number;
+  plannedInStock: number;
+  status: StockStatus;
+}
+
+// ── Item Rule (Tab 1 + Tab 3) ───────────────────────────────────────────────
+
+export interface ItemRule {
   antecedent: string[];
   consequent: string[];
   antecedentNames: string[];
@@ -7,91 +19,134 @@ export interface Rule {
   confidence: number;
   lift: number;
   count: number;
-  zone: DiscountZone;
-  recommendedDiscountPct: number;
-  action: string;
+  revenueLift: number; // lift * avg net price of consequent
+  consequentAvgPrice: number;
+  consequentStock: StockInfo;
+  consequentItemGroup: string;
+  consequentSubCategory: string;
+  consequentSalesPrice: number;
 }
 
-export interface MiningStats {
-  totalRows: number;
+// ── Category (Tab 2) ────────────────────────────────────────────────────────
+
+export interface CategoryRule {
+  antecedent: string;
+  consequent: string;
+  support: number;
+  confidence: number;
+  lift: number;
+  count: number;
+  level: "itemGroup" | "subCategory";
+}
+
+export interface MatrixCell {
+  row: string;
+  col: string;
+  lift: number;
+  confidence: number;
+  count: number;
+}
+
+// ── Bundle (Tab 4) ──────────────────────────────────────────────────────────
+
+export interface BundleItem {
+  code: string;
+  name: string;
+  itemGroup: string;
+  salesPrice: number;
+  stock: StockInfo;
+}
+
+export interface Bundle {
+  id: string;
+  name: string;
+  items: BundleItem[];
+  support: number;
+  frequency: number;
+  totalValue: number;
+  stockCompleteness: number; // 0–1
+  categories: string[];
+}
+
+// ── Stats ────────────────────────────────────────────────────────────────────
+
+export interface AnalysisStats {
   totalOrders: number;
-  basketsUsed: number;
-  uniqueSKUs: number;
+  uniqueItems: number;
   rulesFound: number;
-  strongBundles: number;
+  estimatedRevenueOpportunity: number;
   computeTimeMs: number;
-  channels: string[];
 }
 
-export interface MiningParams {
+// ── Full results from worker ────────────────────────────────────────────────
+
+export interface AnalysisResults {
+  itemRules: ItemRule[];
+  itemGroupMatrix: MatrixCell[];
+  subCategoryMatrix: MatrixCell[];
+  crossCategoryRules: CategoryRule[];
+  bundles: Bundle[];
+  stats: AnalysisStats;
+  salespersons: string[];
+  itemGroups: string[];
+  salespersonItems: Record<string, string[]>;
+}
+
+// ── Worker filters (sent to worker, need re-run) ────────────────────────────
+
+export interface WorkerFilters {
   minSupport: number;
   minConfidence: number;
   minLift: number;
-  maxItemsetSize: number;
-}
-
-export interface FilterParams {
   dateFrom: string | null;
   dateTo: string | null;
-  orderStatuses: string[];
-  channels: string[];
-  minBasketSize: number;
-  skipItems: string[];
+  itemGroups: string[];
 }
+
+export const DEFAULT_WORKER_FILTERS: WorkerFilters = {
+  minSupport: 0.01,
+  minConfidence: 0.2,
+  minLift: 1.3,
+  dateFrom: null,
+  dateTo: null,
+  itemGroups: [],
+};
+
+// ── Worker messages ─────────────────────────────────────────────────────────
 
 export type WorkerIncoming = {
   type: "start";
-  file: File;
-  params: MiningParams;
-  filters: FilterParams;
+  salesRows: Record<string, string>[];
+  productRows: Record<string, string>[];
+  stockRows: Record<string, string>[];
+  filters: WorkerFilters;
 };
 
 export type WorkerMessage =
   | { type: "progress"; step: string; pct: number; message: string }
-  | { type: "channels"; channels: string[] }
-  | { type: "done"; rules: Rule[]; stats: MiningStats }
+  | { type: "done"; results: AnalysisResults }
   | { type: "error"; message: string };
 
-export type DiscountZone = "green" | "yellow" | "purple" | "gray";
+// ── File slot ───────────────────────────────────────────────────────────────
 
-export const ZONE_CONFIG: Record<
-  DiscountZone,
-  { label: string; discountRange: [number, number]; action: string }
-> = {
-  green: {
-    label: "No discount needed",
-    discountRange: [0, 5],
-    action: "Show as Frequently Bought Together",
-  },
-  yellow: {
-    label: "Moderate bundle discount",
-    discountRange: [5, 15],
-    action: "Show in cart when product A is added",
-  },
-  purple: {
-    label: "Aggressive discount",
-    discountRange: [15, 25],
-    action: "Special campaign to change buying habit",
-  },
-  gray: {
-    label: "Skip",
-    discountRange: [0, 0],
-    action: "No real association — do not create bundle",
-  },
+export interface FileSlot {
+  file: File | null;
+  status: "empty" | "parsing" | "parsed" | "error";
+  rowCount: number;
+  error: string | null;
+}
+
+export const EMPTY_FILE_SLOT: FileSlot = {
+  file: null,
+  status: "empty",
+  rowCount: 0,
+  error: null,
 };
 
-export const DEFAULT_MINING_PARAMS: MiningParams = {
-  minSupport: 0.01,
-  minConfidence: 0.3,
-  minLift: 1.0,
-  maxItemsetSize: 3,
-};
+// ── Tab ─────────────────────────────────────────────────────────────────────
 
-export const DEFAULT_FILTER_PARAMS: FilterParams = {
-  dateFrom: null,
-  dateTo: null,
-  orderStatuses: ["Complete"],
-  channels: [],
-  minBasketSize: 2,
-  skipItems: ["T", "TRANSPORT", "Divers", "CNCL006"],
-};
+export type AnalysisTab =
+  | "recommendations"
+  | "categories"
+  | "revenue"
+  | "bundles";

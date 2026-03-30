@@ -34,10 +34,12 @@ interface AppStore {
   etaFilter: "all" | "yes" | "no";
   discountFilter: "all" | "yes" | "no";
   policyFilter: "all" | "continue" | "deny";
+  search: string;
   setStatusFilter: (f: "all" | "active" | "draft") => void;
   setEtaFilter: (f: "all" | "yes" | "no") => void;
   setDiscountFilter: (f: "all" | "yes" | "no") => void;
   setPolicyFilter: (f: "all" | "continue" | "deny") => void;
+  setSearch: (s: string) => void;
 
   // ── Column Visibility ──────────────────────────────────────────────
   visibleColumns: (keyof OutputRow)[];
@@ -128,10 +130,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   etaFilter: "all",
   discountFilter: "all",
   policyFilter: "all",
+  search: "",
   setStatusFilter: (f) => set({ statusFilter: f }),
   setEtaFilter: (f) => set({ etaFilter: f }),
   setDiscountFilter: (f) => set({ discountFilter: f }),
   setPolicyFilter: (f) => set({ policyFilter: f }),
+  setSearch: (s) => set({ search: s }),
 
   // Column Visibility
   visibleColumns: OUTPUT_COLUMNS.map((c) => c.key),

@@ -1,15 +1,14 @@
 "use client";
 
-import type { MiningStats } from "@/lib/association-rules/types";
-import { ShoppingCart, Package, GitBranch, Sparkles } from "lucide-react";
+import type { AnalysisStats } from "@/lib/association-rules/types";
+import { ShoppingCart, Package, GitBranch, TrendingUp } from "lucide-react";
+import { formatPrice } from "@/lib/utils";
 
 interface Props {
-  stats: MiningStats | null;
+  stats: AnalysisStats;
 }
 
-export function MetricsSummary({ stats }: Props) {
-  if (!stats) return null;
-
+export function KpiBar({ stats }: Props) {
   const cards = [
     {
       label: "Total Orders",
@@ -17,8 +16,8 @@ export function MetricsSummary({ stats }: Props) {
       icon: ShoppingCart,
     },
     {
-      label: "Baskets ≥2 items",
-      value: stats.basketsUsed.toLocaleString(),
+      label: "Unique Items",
+      value: stats.uniqueItems.toLocaleString(),
       icon: Package,
     },
     {
@@ -27,9 +26,9 @@ export function MetricsSummary({ stats }: Props) {
       icon: GitBranch,
     },
     {
-      label: "Strong Bundles",
-      value: stats.strongBundles.toLocaleString(),
-      icon: Sparkles,
+      label: "Est. Revenue Opp.",
+      value: `\u20AC ${formatPrice(stats.estimatedRevenueOpportunity)}`,
+      icon: TrendingUp,
     },
   ];
 
@@ -44,7 +43,9 @@ export function MetricsSummary({ stats }: Props) {
           >
             <Icon size={14} className="text-accent shrink-0" />
             <div>
-              <p className="text-[11px] text-muted leading-none">{card.label}</p>
+              <p className="text-[11px] text-muted leading-none">
+                {card.label}
+              </p>
               <p className="text-sm font-mono font-semibold text-primary leading-tight">
                 {card.value}
               </p>

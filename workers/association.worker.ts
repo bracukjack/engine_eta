@@ -7,11 +7,48 @@ interface WorkerSelf {
 }
 const ctx = self as unknown as WorkerSelf;
 
+// ── Inline types (workers can't reliably import from lib/) ───────────────────
+
+type StockStatus = "in_stock" | "low_stock" | "out_of_stock" | "incoming";
+
+interface StockInfo {
+  availableStock: number;
+  plannedInStock: number;
+  status: StockStatus;
+}
+
+interface ProductInfo {
+  name: string;
+  itemGroup: string;
+  subCategory: string;
+  collectionStatus: string;
+  salesPrice: number;
+  costPrice: number;
+}
+
+interface StockData {
+  availableStock: number;
+  plannedInStock: number;
+  plannedOutStock: number;
+}
+
+interface WorkerFilters {
+  minSupport: number;
+  minConfidence: number;
+  minLift: number;
+  dateFrom: string | null;
+  dateTo: string | null;
+  itemGroups: string[];
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-const SKIP_ITEMS = new Set(["T", "TRANSPORT", "Divers", "CNCL006", ""]);
+const EXCLUDED_COLLECTION = new Set([
+  "OUT_OF_COLLECTION",
+  "LAST ITEMS_OUT_OF_COLLECTION",
+]);
 
-function parseEuroNum(val: string | null | undefined): number {
+function parseNum(val: string | undefined | null): number {
   if (!val) return 0;
   const s = String(val).trim();
   if (s === "") return 0;
@@ -22,241 +59,32 @@ function parseEuroNum(val: string | null | undefined): number {
 
 function parseDMY(val: string): Date | null {
   if (!val) return null;
-  const s = val.trim();
-  const parts = s.split("-");
+  const parts = val.trim().split("-");
   if (parts.length !== 3) return null;
   const [d, m, y] = parts.map(Number);
   if (!d || !m || !y) return null;
   return new Date(y, m - 1, d);
 }
 
+function getStockStatus(avail: number, planned: number): StockStatus {
+  if (avail > 10) return "in_stock";
+  if (avail >= 1) return "low_stock";
+  if (planned > 0) return "incoming";
+  return "out_of_stock";
+}
+
+function getStockInfo(data: StockData | undefined): StockInfo {
+  if (!data)
+    return { availableStock: 0, plannedInStock: 0, status: "out_of_stock" };
+  return {
+    availableStock: data.availableStock,
+    plannedInStock: data.plannedInStock,
+    status: getStockStatus(data.availableStock, data.plannedInStock),
+  };
+}
+
 function progress(step: string, pct: number, message: string) {
-  ctx.postMessage({ type: "progress", step, progress: pct, pct, message });
-}
-
-// ── Basket building types ────────────────────────────────────────────────────
-
-interface BasketData {
-  items: Set<string>;
-  names: Map<string, string>;
-  date: Date | null;
-  customer: string;
-  channel: string;
-  status: string;
-  total: number;
-}
-
-// ── Streaming UTF-16 CSV parser ──────────────────────────────────────────────
-
-async function parseAndBuildBaskets(
-  file: File,
-  skipItems: Set<string>,
-  validStatuses: Set<string>,
-  dateFrom: Date | null,
-  dateTo: Date | null,
-  channels: string[]
-): Promise<{
-  baskets: Map<number, string[]>;
-  nameMap: Map<string, string>;
-  totalRows: number;
-  totalOrders: number;
-  allChannels: Set<string>;
-}> {
-  const reader = file.stream().getReader();
-  const nameMap = new Map<string, string>();
-  const orderMap = new Map<number, BasketData>();
-  const allChannels = new Set<string>();
-  let totalRows = 0;
-  let leftover = "";
-  let headerCols: string[] | null = null;
-  let bytesRead = 0;
-  const fileSize = file.size;
-
-  // Detect UTF-16 LE from first chunk
-  let isUtf16 = false;
-  let firstChunk = true;
-
-  // Column index cache
-  let colIdx: Record<string, number> = {};
-
-  const decoder8 = new TextDecoder("utf-8");
-  const decoder16 = new TextDecoder("utf-16le");
-
-  // We accumulate bytes for UTF-16 since TextDecoderStream may not be available in workers
-  let allBytes: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
-
-  function concatBytes(a: Uint8Array<ArrayBufferLike>, b: Uint8Array<ArrayBufferLike>): Uint8Array<ArrayBufferLike> {
-    const c = new Uint8Array(a.length + b.length);
-    c.set(a);
-    c.set(b, a.length);
-    return c;
-  }
-
-  // Read the file in chunks
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    bytesRead += value.byteLength;
-
-    if (firstChunk) {
-      firstChunk = false;
-      isUtf16 = value.length >= 2 && value[0] === 0xff && value[1] === 0xfe;
-    }
-
-    let text: string;
-    if (isUtf16) {
-      allBytes = concatBytes(allBytes, value);
-      // Only decode complete pairs of bytes
-      const usable = allBytes.length - (allBytes.length % 2);
-      if (usable === 0) continue;
-      text = decoder16.decode(allBytes.subarray(0, usable));
-      allBytes = allBytes.subarray(usable);
-    } else {
-      text = decoder8.decode(value, { stream: true });
-    }
-
-    // Remove BOM from first decode
-    if (totalRows === 0 && text.charCodeAt(0) === 0xfeff) {
-      text = text.slice(1);
-    }
-
-    const combined = leftover + text;
-    const lines = combined.split(/\r?\n/);
-    leftover = lines.pop() || "";
-
-    for (const line of lines) {
-      if (line.trim() === "") continue;
-
-      const cols = line.split("\t").map((c) => c.replace(/^"|"$/g, "").trim());
-
-      // First non-empty line is the header
-      if (!headerCols) {
-        headerCols = cols;
-        for (let i = 0; i < cols.length; i++) {
-          colIdx[cols[i]] = i;
-        }
-        continue;
-      }
-
-      totalRows++;
-
-      const get = (name: string) => {
-        const i = colIdx[name];
-        return i !== undefined ? cols[i] || "" : "";
-      };
-
-      // Skip header rows
-      const header = get("Header");
-      if (header === "H") continue;
-
-      const orderNumStr = get("Order number");
-      const orderNum = parseInt(orderNumStr, 10);
-      if (isNaN(orderNum)) continue;
-
-      const item = get("Item");
-      if (skipItems.has(item) || !item) continue;
-
-      const status = get("Order status");
-      if (!validStatuses.has(status)) continue;
-
-      const channel = get("Deliver toDescription");
-      allChannels.add(channel);
-
-      // Channel filter
-      if (channels.length > 0 && !channels.includes(channel)) continue;
-
-      // Date filter
-      const dateStr = get("Order date");
-      const date = parseDMY(dateStr);
-      if (dateFrom && date && date < dateFrom) continue;
-      if (dateTo && date && date > dateTo) continue;
-
-      const itemName = get("Item descriptionDescription");
-      const netPrice = parseEuroNum(get("Net price"));
-      const qty = parseEuroNum(get("Quantity"));
-      const customer = get("Ordered byDescription");
-
-      if (!orderMap.has(orderNum)) {
-        orderMap.set(orderNum, {
-          items: new Set(),
-          names: new Map(),
-          date,
-          customer,
-          channel,
-          status,
-          total: 0,
-        });
-      }
-
-      const basket = orderMap.get(orderNum)!;
-      basket.items.add(item);
-      basket.names.set(item, itemName);
-      nameMap.set(item, itemName);
-      basket.total += netPrice * qty;
-
-      if (totalRows % 10000 === 0) {
-        const pct = Math.min(Math.round((bytesRead / fileSize) * 40), 40);
-        progress("parse", pct, `Reading ${totalRows.toLocaleString()} rows...`);
-      }
-    }
-  }
-
-  // Process leftover
-  if (leftover.trim() && headerCols) {
-    const cols = leftover.split("\t").map((c) => c.replace(/^"|"$/g, "").trim());
-    totalRows++;
-    const get = (name: string) => {
-      const i = colIdx[name];
-      return i !== undefined ? cols[i] || "" : "";
-    };
-    const header = get("Header");
-    if (header !== "H") {
-      const orderNum = parseInt(get("Order number"), 10);
-      const item = get("Item");
-      const status = get("Order status");
-      if (!isNaN(orderNum) && item && !skipItems.has(item) && validStatuses.has(status)) {
-        const channel = get("Deliver toDescription");
-        allChannels.add(channel);
-        if (channels.length === 0 || channels.includes(channel)) {
-          const date = parseDMY(get("Order date"));
-          const skip =
-            (dateFrom && date && date < dateFrom) ||
-            (dateTo && date && date > dateTo);
-          if (!skip) {
-            if (!orderMap.has(orderNum)) {
-              orderMap.set(orderNum, {
-                items: new Set(),
-                names: new Map(),
-                date,
-                customer: get("Ordered byDescription"),
-                channel,
-                status,
-                total: 0,
-              });
-            }
-            const basket = orderMap.get(orderNum)!;
-            basket.items.add(item);
-            const itemName = get("Item descriptionDescription");
-            basket.names.set(item, itemName);
-            nameMap.set(item, itemName);
-          }
-        }
-      }
-    }
-  }
-
-  progress("parse", 40, `Parsed ${totalRows.toLocaleString()} rows`);
-
-  // Build final baskets (only those with ≥ minBasketSize items)
-  const baskets = new Map<number, string[]>();
-  for (const [orderId, data] of orderMap) {
-    const items = Array.from(data.items).sort();
-    baskets.set(orderId, items);
-  }
-  orderMap.clear(); // free memory
-
-  return { baskets, nameMap, totalRows, totalOrders: baskets.size, allChannels };
+  ctx.postMessage({ type: "progress", step, pct, message });
 }
 
 // ── FP-Growth Implementation ─────────────────────────────────────────────────
@@ -280,12 +108,10 @@ class FPNode {
 class FPTree {
   root: FPNode;
   headerTable: Map<string, FPNode>;
-  itemCounts: Map<string, number>;
 
   constructor() {
     this.root = new FPNode("", 0, null);
     this.headerTable = new Map();
-    this.itemCounts = new Map();
   }
 
   addTransaction(items: string[]) {
@@ -294,7 +120,6 @@ class FPTree {
       if (!node.children.has(item)) {
         const newNode = new FPNode(item, 0, node);
         node.children.set(item, newNode);
-        // Update header table linked list
         if (this.headerTable.has(item)) {
           let current = this.headerTable.get(item)!;
           while (current.next) current = current.next;
@@ -305,7 +130,6 @@ class FPTree {
       }
       node = node.children.get(item)!;
       node.count++;
-      this.itemCounts.set(item, (this.itemCounts.get(item) || 0) + 1);
     }
   }
 }
@@ -323,9 +147,7 @@ function buildConditionalPatternBase(
       path.set(parent.item, node.count);
       parent = parent.parent;
     }
-    if (path.size > 0) {
-      patterns.push(path);
-    }
+    if (path.size > 0) patterns.push(path);
     node = node.next;
   }
   return patterns;
@@ -342,14 +164,12 @@ function buildConditionalFPTree(
     }
   }
 
-  // Prune infrequent items
   const freqItems = new Set<string>();
   for (const [item, count] of freqCount) {
     if (count >= minCount) freqItems.add(item);
   }
   if (freqItems.size === 0) return null;
 
-  // Build tree from filtered patterns
   const tree = new FPTree();
   const sorted = Array.from(freqItems).sort(
     (a, b) => (freqCount.get(b) || 0) - (freqCount.get(a) || 0)
@@ -360,8 +180,6 @@ function buildConditionalFPTree(
     const items = Array.from(path.keys())
       .filter((i) => freqItems.has(i))
       .sort((a, b) => (rank.get(a) || 0) - (rank.get(b) || 0));
-
-    // Add each item with the pattern's count
     let node = tree.root;
     const count = Math.min(...Array.from(path.values()));
     for (const item of items) {
@@ -393,19 +211,15 @@ function fpGrowth(
 ) {
   if (prefix.length >= maxSize) return;
 
-  // Process items from least frequent to most
-  const items = Array.from(tree.headerTable.keys());
   const itemCounts = new Map<string, number>();
-  for (const item of items) {
+  for (const item of tree.headerTable.keys()) {
     let count = 0;
     let node: FPNode | null = tree.headerTable.get(item) || null;
     while (node) {
       count += node.count;
       node = node.next;
     }
-    if (count >= minCount) {
-      itemCounts.set(item, count);
-    }
+    if (count >= minCount) itemCounts.set(item, count);
   }
 
   const sortedItems = Array.from(itemCounts.keys()).sort(
@@ -416,13 +230,9 @@ function fpGrowth(
     const newPrefix = [...prefix, item].sort();
     const key = newPrefix.join("\x00");
     results.set(key, itemCounts.get(item)!);
-
-    // Build conditional pattern base and tree
     const cpb = buildConditionalPatternBase(item, tree.headerTable);
     const condTree = buildConditionalFPTree(cpb, minCount);
-    if (condTree) {
-      fpGrowth(condTree, newPrefix, minCount, maxSize, results);
-    }
+    if (condTree) fpGrowth(condTree, newPrefix, minCount, maxSize, results);
   }
 }
 
@@ -434,9 +244,6 @@ function mineFrequentItemsets(
   const totalTx = transactions.length;
   const minCount = Math.max(1, Math.floor(totalTx * minSupport));
 
-  progress("mine", 50, "Counting item frequencies...");
-
-  // Count single item frequencies
   const itemFreq = new Map<string, number>();
   for (const tx of transactions) {
     for (const item of tx) {
@@ -444,40 +251,28 @@ function mineFrequentItemsets(
     }
   }
 
-  // Keep only frequent items
   const freqItems = new Set<string>();
   for (const [item, count] of itemFreq) {
     if (count >= minCount) freqItems.add(item);
   }
 
-  // Sort items by frequency (descending) for optimal tree construction
   const sorted = Array.from(freqItems).sort(
     (a, b) => (itemFreq.get(b) || 0) - (itemFreq.get(a) || 0)
   );
   const rank = new Map(sorted.map((item, i) => [item, i]));
 
-  progress("mine", 55, `Building FP-Tree with ${freqItems.size} frequent items...`);
-
-  // Build FP-Tree
   const tree = new FPTree();
   for (const tx of transactions) {
     const filtered = tx
       .filter((i) => freqItems.has(i))
       .sort((a, b) => (rank.get(a) || 0) - (rank.get(b) || 0));
-    if (filtered.length > 0) {
-      tree.addTransaction(filtered);
-    }
+    if (filtered.length > 0) tree.addTransaction(filtered);
   }
 
-  progress("mine", 65, "Mining frequent itemsets...");
-
-  // Run FP-Growth
   const results = new Map<string, number>();
-  // Add single item counts
   for (const item of freqItems) {
     results.set(item, itemFreq.get(item)!);
   }
-
   fpGrowth(tree, [], minCount, maxSize, results);
 
   return results;
@@ -485,7 +280,7 @@ function mineFrequentItemsets(
 
 // ── Rule generation ──────────────────────────────────────────────────────────
 
-interface RuleRaw {
+interface RawRule {
   antecedent: string[];
   consequent: string[];
   support: number;
@@ -499,18 +294,16 @@ function generateRules(
   totalTx: number,
   minConfidence: number,
   minLift: number
-): RuleRaw[] {
-  const rules: RuleRaw[] = [];
+): RawRule[] {
+  const rules: RawRule[] = [];
 
   for (const [key, count] of itemsets) {
     const items = key.split("\x00");
     if (items.length < 2) continue;
 
     const support = count / totalTx;
-
-    // Generate all possible antecedent → consequent splits
-    // For a set {A,B,C}: A→{B,C}, B→{A,C}, C→{A,B}, {A,B}→C, {A,C}→B, {B,C}→A
     const n = items.length;
+
     for (let mask = 1; mask < (1 << n) - 1; mask++) {
       const ante: string[] = [];
       const cons: string[] = [];
@@ -534,167 +327,537 @@ function generateRules(
       const lift = confidence / expectedConfidence;
       if (lift < minLift) continue;
 
-      rules.push({
-        antecedent: ante,
-        consequent: cons,
-        support,
-        confidence,
-        lift,
-        count,
-      });
+      rules.push({ antecedent: ante, consequent: cons, support, confidence, lift, count });
     }
   }
 
   return rules;
 }
 
-// ── Discount zones ───────────────────────────────────────────────────────────
+// ── Bundle name generation ───────────────────────────────────────────────────
 
-type DiscountZone = "green" | "yellow" | "purple" | "gray";
+const GROUP_SHORT: Record<string, string> = {
+  FURNITURE: "Furniture",
+  HOMEWARE: "Home",
+  DINING: "Dining",
+  DECORATION: "Decor",
+  LIGHTING: "Lighting",
+  "HOME TEXTILES": "Textile",
+  FASHION: "Fashion",
+};
 
-function getDiscountZone(confidence: number, lift: number): DiscountZone {
-  if (confidence >= 0.8 && lift >= 1.5) return "green";
-  if (confidence >= 0.6 && lift >= 1.2) return "yellow";
-  if (lift >= 1.2 && confidence < 0.6) return "purple";
-  return "gray";
-}
-
-function getRecommendedDiscount(zone: DiscountZone): number {
-  switch (zone) {
-    case "green":
-      return 0;
-    case "yellow":
-      return 10;
-    case "purple":
-      return 20;
-    case "gray":
-      return 0;
-  }
-}
-
-function getAction(zone: DiscountZone): string {
-  switch (zone) {
-    case "green":
-      return "Show as Frequently Bought Together";
-    case "yellow":
-      return "Show in cart when product A is added";
-    case "purple":
-      return "Special campaign to change buying habit";
-    case "gray":
-      return "No real association — do not create bundle";
-  }
+function generateBundleName(categories: string[]): string {
+  const names = categories.map((c) => GROUP_SHORT[c] || c);
+  if (names.length === 1) return `${names[0]} Collection`;
+  if (
+    categories.includes("FURNITURE") &&
+    categories.includes("LIGHTING")
+  )
+    return "Living Room Set";
+  if (categories.includes("DINING") && categories.includes("HOMEWARE"))
+    return "Dining Essentials";
+  if (
+    categories.includes("FURNITURE") &&
+    categories.includes("HOME TEXTILES")
+  )
+    return "Comfort Collection";
+  if (
+    categories.includes("DECORATION") &&
+    categories.includes("LIGHTING")
+  )
+    return "Ambiance Set";
+  if (
+    categories.includes("FURNITURE") &&
+    categories.includes("DECORATION")
+  )
+    return "Interior Set";
+  return `${names.slice(0, 3).join(" & ")} Set`;
 }
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 
 ctx.onmessage = async (e: MessageEvent) => {
-  const { file, params, filters } = e.data;
+  const { salesRows, productRows, stockRows, filters } = e.data as {
+    salesRows: Record<string, string>[];
+    productRows: Record<string, string>[];
+    stockRows: Record<string, string>[];
+    filters: WorkerFilters;
+  };
   const startTime = performance.now();
 
   try {
-    const skipItems = new Set<string>(filters.skipItems || ["T", "TRANSPORT", "Divers", "CNCL006"]);
-    const validStatuses = new Set<string>(filters.orderStatuses || ["Complete"]);
+    // ── Step 1: Build lookup maps ──────────────────────────────────────────
+
+    progress("Building lookups", 5, "Processing product data...");
+
+    const productMap = new Map<string, ProductInfo>();
+    for (const row of productRows) {
+      const code = String(row["Code"] || "").trim();
+      if (!code) continue;
+      productMap.set(code, {
+        name: String(row["DescriptionDescription"] || "").trim(),
+        itemGroup: String(row["ItemGroupDescription"] || "").trim(),
+        subCategory: String(row["Class_01Description"] || "").trim(),
+        collectionStatus: String(row["Class_04Description"] || "").trim(),
+        salesPrice: parseNum(row["SalesPrice"]),
+        costPrice: parseNum(row["CostPriceStandard"]),
+      });
+    }
+
+    progress("Building lookups", 10, "Processing stock data...");
+
+    const stockMap = new Map<string, StockData>();
+    for (const row of stockRows) {
+      const code = String(row["ItemCode"] || "").trim();
+      if (!code) continue;
+      stockMap.set(code, {
+        availableStock: parseNum(row["AvailableStock"]),
+        plannedInStock: parseNum(row["PlannedInStock"]),
+        plannedOutStock: parseNum(row["PlannedOutStock"]),
+      });
+    }
+
+    // ── Step 2: Build enriched transactions ────────────────────────────────
+
+    progress("Building transactions", 15, "Processing sales data...");
+
     const dateFrom = filters.dateFrom ? new Date(filters.dateFrom) : null;
     const dateTo = filters.dateTo ? new Date(filters.dateTo) : null;
-    const channels: string[] = filters.channels || [];
+    const filterGroups = new Set(filters.itemGroups);
+    const hasGroupFilter = filterGroups.size > 0;
 
-    // Step 1: Parse and build baskets
-    progress("parse", 5, "Starting file parsing...");
-    const { baskets, nameMap, totalRows, totalOrders, allChannels } =
-      await parseAndBuildBaskets(file, skipItems, validStatuses, dateFrom, dateTo, channels);
-
-    // Send channels for filter UI
-    ctx.postMessage({ type: "channels", channels: Array.from(allChannels).sort() });
-
-    progress("build", 42, `Built ${totalOrders.toLocaleString()} order baskets`);
-
-    // Filter by min basket size
-    const minBasket = filters.minBasketSize || 2;
-    const transactions: string[][] = [];
-    for (const [, items] of baskets) {
-      if (items.length >= minBasket) {
-        transactions.push(items);
-      }
+    interface OrderData {
+      items: Set<string>;
+      itemGroups: Set<string>;
+      subCategories: Set<string>;
+      salesperson: string;
     }
-    baskets.clear(); // free memory
 
-    const uniqueSKUs = new Set(transactions.flat()).size;
+    const orders = new Map<string, OrderData>();
+    const itemNetPrices = new Map<string, number[]>();
+    const salespersonItemsMap = new Map<string, Set<string>>();
+    const allSalespersons = new Set<string>();
+    const allItemGroups = new Set<string>();
+    const nameMap = new Map<string, string>();
+
+    let processedRows = 0;
+    for (const row of salesRows) {
+      processedRows++;
+      if (processedRows % 5000 === 0) {
+        const pct = 15 + Math.round((processedRows / salesRows.length) * 25);
+        progress(
+          "Building transactions",
+          pct,
+          `Processing row ${processedRows.toLocaleString()}...`
+        );
+      }
+
+      const item = String(row["Item"] || "").trim();
+      if (!item) continue;
+
+      const orderNum = String(row["Order number"] || "").trim();
+      if (!orderNum) continue;
+
+      // Date filter
+      const dateStr = String(row["Order date"] || "").trim();
+      if (dateStr && (dateFrom || dateTo)) {
+        const date = parseDMY(dateStr);
+        if (date) {
+          if (dateFrom && date < dateFrom) continue;
+          if (dateTo && date > dateTo) continue;
+        }
+      }
+
+      // Product enrichment
+      const product = productMap.get(item);
+      const itemGroup = product?.itemGroup || "";
+      const subCategory = product?.subCategory || "";
+
+      // Item group filter
+      if (hasGroupFilter && itemGroup && !filterGroups.has(itemGroup)) continue;
+
+      if (itemGroup) allItemGroups.add(itemGroup);
+
+      // Item name
+      const itemName = String(row["Item descriptionDescription"] || "").trim();
+      if (itemName) nameMap.set(item, itemName);
+      else if (product?.name) nameMap.set(item, product.name);
+
+      // Net price tracking
+      const netPrice = parseNum(row["Net price"]);
+      if (netPrice > 0) {
+        if (!itemNetPrices.has(item)) itemNetPrices.set(item, []);
+        itemNetPrices.get(item)!.push(netPrice);
+      }
+
+      // Salesperson tracking
+      const salesperson = String(
+        row["Sales personDescription"] || ""
+      ).trim();
+      if (salesperson) {
+        allSalespersons.add(salesperson);
+        if (!salespersonItemsMap.has(salesperson))
+          salespersonItemsMap.set(salesperson, new Set());
+        salespersonItemsMap.get(salesperson)!.add(item);
+      }
+
+      // Build order basket
+      if (!orders.has(orderNum)) {
+        orders.set(orderNum, {
+          items: new Set(),
+          itemGroups: new Set(),
+          subCategories: new Set(),
+          salesperson,
+        });
+      }
+      const order = orders.get(orderNum)!;
+      order.items.add(item);
+      if (itemGroup) order.itemGroups.add(itemGroup);
+      if (subCategory) order.subCategories.add(subCategory);
+    }
 
     progress(
-      "build",
-      45,
-      `${transactions.length.toLocaleString()} baskets with ≥${minBasket} items, ${uniqueSKUs} unique SKUs`
+      "Building transactions",
+      42,
+      `Built ${orders.size.toLocaleString()} orders`
     );
 
-    if (transactions.length === 0) {
+    // Build transaction arrays (orders with 2+ items)
+    const itemTransactions: string[][] = [];
+    const itemGroupTransactions: string[][] = [];
+    const subCategoryTransactions: string[][] = [];
+
+    for (const [, order] of orders) {
+      const items = Array.from(order.items).sort();
+      if (items.length >= 2) itemTransactions.push(items);
+
+      const groups = Array.from(order.itemGroups).sort();
+      if (groups.length >= 2) itemGroupTransactions.push(groups);
+
+      const subs = Array.from(order.subCategories).sort();
+      if (subs.length >= 2) subCategoryTransactions.push(subs);
+    }
+
+    const uniqueItems = new Set(itemTransactions.flat()).size;
+
+    progress(
+      "Mining",
+      45,
+      `Mining ${itemTransactions.length} baskets, ${uniqueItems} unique items...`
+    );
+
+    // Empty results shortcut
+    if (itemTransactions.length === 0) {
       ctx.postMessage({
         type: "done",
-        rules: [],
-        stats: {
-          totalRows,
-          totalOrders,
-          basketsUsed: 0,
-          uniqueSKUs,
-          rulesFound: 0,
-          strongBundles: 0,
-          computeTimeMs: Math.round(performance.now() - startTime),
-          channels: Array.from(allChannels).sort(),
+        results: {
+          itemRules: [],
+          itemGroupMatrix: [],
+          subCategoryMatrix: [],
+          crossCategoryRules: [],
+          bundles: [],
+          stats: {
+            totalOrders: orders.size,
+            uniqueItems: 0,
+            rulesFound: 0,
+            estimatedRevenueOpportunity: 0,
+            computeTimeMs: Math.round(performance.now() - startTime),
+          },
+          salespersons: Array.from(allSalespersons).sort(),
+          itemGroups: Array.from(allItemGroups).sort(),
+          salespersonItems: {},
         },
       });
       return;
     }
 
-    // Step 2: Mine frequent itemsets
-    const itemsets = mineFrequentItemsets(
-      transactions,
-      params.minSupport,
-      params.maxItemsetSize
+    // ── Step 3: Mine item-level rules ──────────────────────────────────────
+
+    progress("Mining items", 50, "Mining item-level patterns...");
+    const itemItemsets = mineFrequentItemsets(
+      itemTransactions,
+      filters.minSupport,
+      3
     );
 
-    progress("compute", 80, `Found ${itemsets.size} frequent itemsets, generating rules...`);
-
-    // Step 3: Generate rules
-    const rawRules = generateRules(
-      itemsets,
-      transactions.length,
-      params.minConfidence,
-      params.minLift
+    progress(
+      "Generating rules",
+      65,
+      `Found ${itemItemsets.size} frequent itemsets...`
+    );
+    const rawItemRules = generateRules(
+      itemItemsets,
+      itemTransactions.length,
+      filters.minConfidence,
+      filters.minLift
     );
 
-    progress("compute", 90, `Generated ${rawRules.length} rules, computing zones...`);
+    // Compute average net prices
+    const avgPriceMap = new Map<string, number>();
+    for (const [item, prices] of itemNetPrices) {
+      avgPriceMap.set(
+        item,
+        prices.reduce((a, b) => a + b, 0) / prices.length
+      );
+    }
 
-    // Step 4: Enrich rules with names and zones
-    const rules = rawRules
-      .map((r) => ({
-        ...r,
-        antecedentNames: r.antecedent.map((sku) => nameMap.get(sku) || sku),
-        consequentNames: r.consequent.map((sku) => nameMap.get(sku) || sku),
-        zone: getDiscountZone(r.confidence, r.lift),
-        recommendedDiscountPct: getRecommendedDiscount(
-          getDiscountZone(r.confidence, r.lift)
-        ),
-        action: getAction(getDiscountZone(r.confidence, r.lift)),
-      }))
-      .sort((a, b) => b.lift - a.lift);
+    // Enrich item rules (only single-consequent for clarity)
+    const itemRules: Array<{
+      antecedent: string[];
+      consequent: string[];
+      antecedentNames: string[];
+      consequentNames: string[];
+      support: number;
+      confidence: number;
+      lift: number;
+      count: number;
+      revenueLift: number;
+      consequentAvgPrice: number;
+      consequentStock: StockInfo;
+      consequentItemGroup: string;
+      consequentSubCategory: string;
+      consequentSalesPrice: number;
+    }> = [];
 
-    const strongBundles = rules.filter(
-      (r) => r.zone === "green" || r.zone === "yellow"
-    ).length;
+    for (const raw of rawItemRules) {
+      if (raw.consequent.length !== 1) continue;
 
-    progress("complete", 100, "Done!");
+      const consItem = raw.consequent[0];
+      const product = productMap.get(consItem);
+
+      // Never recommend OUT_OF_COLLECTION items
+      if (product && EXCLUDED_COLLECTION.has(product.collectionStatus)) continue;
+
+      const consAvgPrice =
+        avgPriceMap.get(consItem) || product?.salesPrice || 0;
+      const stockInfo = getStockInfo(stockMap.get(consItem));
+
+      itemRules.push({
+        antecedent: raw.antecedent,
+        consequent: raw.consequent,
+        antecedentNames: raw.antecedent.map((s) => nameMap.get(s) || s),
+        consequentNames: raw.consequent.map((s) => nameMap.get(s) || s),
+        support: raw.support,
+        confidence: raw.confidence,
+        lift: raw.lift,
+        count: raw.count,
+        revenueLift: raw.lift * consAvgPrice,
+        consequentAvgPrice: consAvgPrice,
+        consequentStock: stockInfo,
+        consequentItemGroup: product?.itemGroup || "",
+        consequentSubCategory: product?.subCategory || "",
+        consequentSalesPrice: product?.salesPrice || 0,
+      });
+    }
+
+    itemRules.sort((a, b) => b.lift - a.lift);
+
+    // ── Step 4: Mine category-level rules ──────────────────────────────────
+
+    progress("Mining categories", 72, "Mining category-level patterns...");
+
+    const igItemsets =
+      itemGroupTransactions.length >= 2
+        ? mineFrequentItemsets(itemGroupTransactions, 0.005, 3)
+        : new Map<string, number>();
+
+    const scItemsets =
+      subCategoryTransactions.length >= 2
+        ? mineFrequentItemsets(subCategoryTransactions, 0.005, 3)
+        : new Map<string, number>();
+
+    const rawIGRules = igItemsets.size > 0
+      ? generateRules(igItemsets, itemGroupTransactions.length, 0.1, 1.0)
+      : [];
+    const rawSCRules = scItemsets.size > 0
+      ? generateRules(scItemsets, subCategoryTransactions.length, 0.1, 1.0)
+      : [];
+
+    // Build heatmap matrices (1-to-1 rules only)
+    const itemGroupMatrix: Array<{
+      row: string;
+      col: string;
+      lift: number;
+      confidence: number;
+      count: number;
+    }> = [];
+    for (const rule of rawIGRules) {
+      if (rule.antecedent.length === 1 && rule.consequent.length === 1) {
+        itemGroupMatrix.push({
+          row: rule.antecedent[0],
+          col: rule.consequent[0],
+          lift: rule.lift,
+          confidence: rule.confidence,
+          count: rule.count,
+        });
+      }
+    }
+
+    const subCategoryMatrix: Array<{
+      row: string;
+      col: string;
+      lift: number;
+      confidence: number;
+      count: number;
+    }> = [];
+    for (const rule of rawSCRules) {
+      if (rule.antecedent.length === 1 && rule.consequent.length === 1) {
+        subCategoryMatrix.push({
+          row: rule.antecedent[0],
+          col: rule.consequent[0],
+          lift: rule.lift,
+          confidence: rule.confidence,
+          count: rule.count,
+        });
+      }
+    }
+
+    // Cross-category rules: top 20 by lift (different categories only)
+    const crossCategoryRules = [
+      ...rawIGRules
+        .filter(
+          (r) =>
+            r.antecedent.length === 1 &&
+            r.consequent.length === 1 &&
+            r.antecedent[0] !== r.consequent[0]
+        )
+        .map((r) => ({
+          antecedent: r.antecedent[0],
+          consequent: r.consequent[0],
+          support: r.support,
+          confidence: r.confidence,
+          lift: r.lift,
+          count: r.count,
+          level: "itemGroup" as const,
+        })),
+      ...rawSCRules
+        .filter(
+          (r) =>
+            r.antecedent.length === 1 &&
+            r.consequent.length === 1 &&
+            r.antecedent[0] !== r.consequent[0]
+        )
+        .map((r) => ({
+          antecedent: r.antecedent[0],
+          consequent: r.consequent[0],
+          support: r.support,
+          confidence: r.confidence,
+          lift: r.lift,
+          count: r.count,
+          level: "subCategory" as const,
+        })),
+    ]
+      .sort((a, b) => b.lift - a.lift)
+      .slice(0, 20);
+
+    // ── Step 5: Bundle detection ───────────────────────────────────────────
+
+    progress("Detecting bundles", 82, "Finding product bundles...");
+
+    const bundles: Array<{
+      id: string;
+      name: string;
+      items: Array<{
+        code: string;
+        name: string;
+        itemGroup: string;
+        salesPrice: number;
+        stock: StockInfo;
+      }>;
+      support: number;
+      frequency: number;
+      totalValue: number;
+      stockCompleteness: number;
+      categories: string[];
+    }> = [];
+
+    for (const [key, count] of itemItemsets) {
+      const items = key.split("\x00");
+      if (items.length < 3 || items.length > 5) continue;
+
+      // Must span 2+ categories
+      const categories = new Set<string>();
+      for (const item of items) {
+        const p = productMap.get(item);
+        if (p?.itemGroup) categories.add(p.itemGroup);
+      }
+      if (categories.size < 2) continue;
+
+      const support = count / itemTransactions.length;
+      if (support < filters.minSupport * 0.5) continue; // slightly relaxed threshold for bundles
+
+      const bundleItems = items.map((code) => {
+        const p = productMap.get(code);
+        const s = stockMap.get(code);
+        return {
+          code,
+          name: nameMap.get(code) || p?.name || code,
+          itemGroup: p?.itemGroup || "",
+          salesPrice: p?.salesPrice || 0,
+          stock: getStockInfo(s),
+        };
+      });
+
+      const totalValue = bundleItems.reduce((sum, b) => sum + b.salesPrice, 0);
+      const inStockCount = bundleItems.filter(
+        (b) => b.stock.status === "in_stock" || b.stock.status === "low_stock"
+      ).length;
+      const stockCompleteness =
+        bundleItems.length > 0 ? inStockCount / bundleItems.length : 0;
+      const catArray = Array.from(categories).sort();
+
+      bundles.push({
+        id: key,
+        name: generateBundleName(catArray),
+        items: bundleItems,
+        support,
+        frequency: count,
+        totalValue,
+        stockCompleteness,
+        categories: catArray,
+      });
+    }
+
+    bundles.sort((a, b) => b.frequency - a.frequency);
+    const topBundles = bundles.slice(0, 50);
+
+    // ── Compute estimated revenue opportunity ──────────────────────────────
+
+    const top20ByRevenue = [...itemRules]
+      .sort((a, b) => b.revenueLift - a.revenueLift)
+      .slice(0, 20);
+    const estimatedRevenue = top20ByRevenue.reduce(
+      (sum, r) => sum + r.support * r.consequentAvgPrice * 100,
+      0
+    );
+
+    // ── Build salesperson items record ─────────────────────────────────────
+
+    const spItems: Record<string, string[]> = {};
+    for (const [sp, items] of salespersonItemsMap) {
+      spItems[sp] = Array.from(items);
+    }
+
+    progress("Complete", 100, "Done!");
 
     ctx.postMessage({
       type: "done",
-      rules,
-      stats: {
-        totalRows,
-        totalOrders,
-        basketsUsed: transactions.length,
-        uniqueSKUs,
-        rulesFound: rules.length,
-        strongBundles,
-        computeTimeMs: Math.round(performance.now() - startTime),
-        channels: Array.from(allChannels).sort(),
+      results: {
+        itemRules,
+        itemGroupMatrix,
+        subCategoryMatrix,
+        crossCategoryRules,
+        bundles: topBundles,
+        stats: {
+          totalOrders: orders.size,
+          uniqueItems,
+          rulesFound: itemRules.length,
+          estimatedRevenueOpportunity: Math.round(estimatedRevenue),
+          computeTimeMs: Math.round(performance.now() - startTime),
+        },
+        salespersons: Array.from(allSalespersons).sort(),
+        itemGroups: Array.from(allItemGroups).sort(),
+        salespersonItems: spItems,
       },
     });
   } catch (err: unknown) {
