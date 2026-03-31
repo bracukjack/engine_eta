@@ -31,7 +31,7 @@ const TOOLS = [
     name: "Stock Analyzer",
     href: "/stock-analyzer",
     icon: PackageSearch,
-    active: false,
+    active: true,
   },
   {
     name: "PO Tracker",
