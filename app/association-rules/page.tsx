@@ -24,7 +24,10 @@ import { SalespersonTable } from "@/components/association-rules/SalespersonTabl
 import { SeasonalInsights } from "@/components/association-rules/SeasonalInsights";
 import { ConflictsPanel } from "@/components/association-rules/ConflictsPanel";
 import { Button } from "@/components/ui/button";
-import { Play, Loader2 } from "lucide-react";
+import { Play, Loader2, X } from "lucide-react";
+import { idbStorage } from "@/lib/idb-storage";
+
+const ASSOC_RESULTS_KEY = "association-results";
 
 type ProcessingState = "idle" | "processing" | "done" | "error";
 
@@ -82,6 +85,37 @@ export default function AssociationRulesPage() {
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<AnalysisTab>("recommendations");
+
+  // ── IDB persistence ──────────────────────────────────────────────────────
+
+  // Load persisted results on mount
+  useEffect(() => {
+    idbStorage.getItem(ASSOC_RESULTS_KEY).then((v) => {
+      if (!v) return;
+      try {
+        const stored = JSON.parse(v) as AnalysisResults;
+        setResults(stored);
+        setProcessingState("done");
+      } catch {
+        // corrupt data — ignore
+      }
+    });
+  }, []);
+
+  // Save results to IDB whenever they change
+  useEffect(() => {
+    if (results !== null) {
+      idbStorage.setItem(ASSOC_RESULTS_KEY, JSON.stringify(results));
+    }
+  }, [results]);
+
+  const handleReset = useCallback(() => {
+    setResults(null);
+    setProcessingState("idle");
+    setError(null);
+    setProgress(null);
+    idbStorage.removeItem(ASSOC_RESULTS_KEY);
+  }, []);
 
   // ── Worker init ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -225,6 +259,16 @@ export default function AssociationRulesPage() {
             )}
             {processingState === "processing" ? "Mining..." : "Run Analysis"}
           </Button>
+
+          {results !== null && (
+            <button
+              onClick={handleReset}
+              className="flex items-center gap-1.5 text-[11px] text-muted hover:text-red-500 transition-colors cursor-pointer"
+            >
+              <X size={12} />
+              Reset Data
+            </button>
+          )}
 
           {!allParsed && (
             <span className="text-[11px] text-muted">

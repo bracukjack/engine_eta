@@ -97,8 +97,8 @@ export default function RFMAnalysisPage() {
     return { total, avgFreq, avgMon, bySegment };
   }, [customers]);
 
-  const isLoaded   = procState === "done" && customers.length > 0;
-  const isUploading = procState === "idle" || procState === "processing" || procState === "error";
+  const isLoaded   = customers.length > 0 && procState !== "processing";
+  const isUploading = !isLoaded || procState === "error";
 
   // ── RENDER ─────────────────────────────────────────────────────────────────
   return (

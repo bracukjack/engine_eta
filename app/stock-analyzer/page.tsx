@@ -7,12 +7,13 @@ import { buildSearchMatcher, formatInteger, cn } from "@/lib/utils";
 import { StatChip } from "@/components/status-badge/status-badge";
 import { Button } from "@/components/ui/button";
 import { useStockStore } from "@/lib/stock-store";
+import type { ItemsLookup } from "@/lib/stock-store";
 import { STOCK_COLUMNS, STOCK_TABLE_SIZE } from "@/lib/stock-types";
 import type { StockRow, StockSummary, StockStatusFilter, StockTableSize } from "@/lib/stock-types";
 import {
   Upload, Search, X, ArrowUp, ArrowDown, ArrowUpDown,
   Download, Columns3, Check, ChevronLeft, ChevronRight,
-  PackageSearch, Loader2, AlertCircle, Filter,
+  PackageSearch, Loader2, AlertCircle, Filter, CheckCircle2,
 } from "lucide-react";
 
 // ── EU number parser ─────────────────────────────────────────────────────────
@@ -37,6 +38,8 @@ function processRows(
       ItemCode:                        String(r["ItemCode"] ?? ""),
       ItemDescriptionDescription:      String(r["ItemDescriptionDescription"] ?? ""),
       ItemGroupDescriptionDescription: String(r["ItemGroupDescriptionDescription"] ?? ""),
+      Class01Description:              "",
+      Class06Description:              "",
       Stock:                           stock,
       PlannedInStock:                  parseStockNum(r["PlannedInStock"]),
       PlannedOutStock:                 plannedOut,
@@ -146,10 +149,12 @@ function CategoryFilter({
   categories,
   selected,
   onChange,
+  label = "Category",
 }: {
   categories: string[];
   selected: string[];
   onChange: (cats: string[]) => void;
+  label?: string;
 }) {
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -183,7 +188,7 @@ function CategoryFilter({
         )}
       >
         <Filter size={12} />
-        Category
+        {label}
         {selected.length > 0 && (
           <>
             <span className="bg-accent text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
@@ -231,6 +236,79 @@ function CategoryFilter({
   );
 }
 
+// ── File Slot ────────────────────────────────────────────────────────────────
+function StockFileSlot({
+  label,
+  hint,
+  required = false,
+  fileName,
+  isReady,
+  onDrop,
+  onClear,
+}: {
+  label: string;
+  hint: string;
+  required?: boolean;
+  fileName: string | null;
+  isReady: boolean;
+  onDrop: (file: File) => void;
+  onClear?: () => void;
+}) {
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: (files) => { if (files[0]) onDrop(files[0]); },
+    accept: {
+      "text/csv": [".csv"],
+      "application/vnd.ms-excel": [".csv", ".xls"],
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+    },
+    multiple: false,
+  });
+
+  return (
+    <div
+      {...getRootProps()}
+      className={cn(
+        "relative border rounded-md p-3 cursor-pointer transition-all duration-200",
+        isDragActive && "border-accent bg-blue-50 scale-[1.02]",
+        isReady
+          ? "border-emerald-300 bg-emerald-50"
+          : "border-edge hover:border-muted bg-white"
+      )}
+    >
+      <input {...getInputProps()} />
+      <div className="flex items-center gap-2.5">
+        {isReady ? (
+          <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+        ) : (
+          <Upload
+            size={14}
+            className={cn("shrink-0 transition-colors", isDragActive ? "text-accent" : "text-muted")}
+          />
+        )}
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium text-primary truncate">
+            {label}
+            {required && <span className="text-red-400 ml-0.5">*</span>}
+          </p>
+          {isReady ? (
+            <p className="text-[11px] text-emerald-600 font-mono truncate">{fileName}</p>
+          ) : (
+            <p className="text-[11px] text-muted font-mono">{hint}</p>
+          )}
+        </div>
+        {isReady && onClear && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onClear(); }}
+            className="p-0.5 rounded text-muted hover:text-red-500 transition-colors"
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ────────────────────────────────────────────────────────────────
 export default function StockAnalyzerPage() {
   const rows             = useStockStore((s) => s.rows);
@@ -248,12 +326,20 @@ export default function StockAnalyzerPage() {
   const rowsPerPage      = useStockStore((s) => s.rowsPerPage);
   const currentPage      = useStockStore((s) => s.currentPage);
 
+  const itemsFileName        = useStockStore((s) => s.itemsFileName);
+  const class01Filter        = useStockStore((s) => s.class01Filter);
+  const class06Filter        = useStockStore((s) => s.class06Filter);
+
   const setRows               = useStockStore((s) => s.setRows);
+  const setItemsData          = useStockStore((s) => s.setItemsData);
+  const clearItemsData        = useStockStore((s) => s.clearItemsData);
   const setProcessing         = useStockStore((s) => s.setProcessing);
   const setError              = useStockStore((s) => s.setError);
   const reset                 = useStockStore((s) => s.reset);
   const setSearch             = useStockStore((s) => s.setSearch);
   const setCategoryFilter     = useStockStore((s) => s.setCategoryFilter);
+  const setClass01Filter      = useStockStore((s) => s.setClass01Filter);
+  const setClass06Filter      = useStockStore((s) => s.setClass06Filter);
   const setStockStatusFilter  = useStockStore((s) => s.setStockStatusFilter);
   const toggleSort            = useStockStore((s) => s.toggleSort);
   const toggleColumn          = useStockStore((s) => s.toggleColumn);
@@ -286,18 +372,30 @@ export default function StockAnalyzerPage() {
     [setProcessing, setRows, setError]
   );
 
-  const { getRootProps, getInputProps, isDragActive } = useDropzone({
-    onDrop: (files) => { if (files[0]) handleFile(files[0]); },
-    accept: {
-      "text/csv": [".csv"],
-      "application/vnd.ms-excel": [".csv", ".xls"],
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+  // Items file handler (items.csv → Class01/Class06 lookup)
+  const handleItemsFile = useCallback(
+    async (file: File) => {
+      try {
+        const buffer = await file.arrayBuffer();
+        const raw    = await parseFileBuffer(buffer) as Record<string, unknown>[];
+        const lookup: ItemsLookup = {};
+        for (const r of raw) {
+          const code = String(r["Code"] ?? "").trim();
+          if (!code) continue;
+          lookup[code] = {
+            class01: String(r["Class_01Description"] ?? "").trim(),
+            class06: String(r["Class_06Description"] ?? "").trim(),
+          };
+        }
+        setItemsData(lookup, file.name);
+      } catch {
+        // silently ignore items parse error — sub-categories stay empty
+      }
     },
-    multiple: false,
-    noClick: false,
-  });
+    [setItemsData]
+  );
 
-  // Unique sorted categories
+  // Unique sorted categories & sub-categories
   const categories = useMemo(
     () =>
       Array.from(
@@ -305,6 +403,22 @@ export default function StockAnalyzerPage() {
       ).sort(),
     [rows]
   );
+
+  const class01Options = useMemo(() => {
+    const base = categoryFilter.length > 0
+      ? rows.filter((r) => categoryFilter.includes(r.ItemGroupDescriptionDescription))
+      : rows;
+    return Array.from(new Set(base.map((r) => r.Class01Description).filter(Boolean))).sort();
+  }, [rows, categoryFilter]);
+
+  const class06Options = useMemo(() => {
+    let base = rows;
+    if (categoryFilter.length > 0)
+      base = base.filter((r) => categoryFilter.includes(r.ItemGroupDescriptionDescription));
+    if (class01Filter.length > 0)
+      base = base.filter((r) => class01Filter.includes(r.Class01Description));
+    return Array.from(new Set(base.map((r) => r.Class06Description).filter(Boolean))).sort();
+  }, [rows, categoryFilter, class01Filter]);
 
   // Active (visible) columns
   const activeCols = useMemo(
@@ -323,6 +437,10 @@ export default function StockAnalyzerPage() {
     let data = rows;
     if (categoryFilter.length > 0)
       data = data.filter((r) => categoryFilter.includes(r.ItemGroupDescriptionDescription));
+    if (class01Filter.length > 0)
+      data = data.filter((r) => class01Filter.includes(r.Class01Description));
+    if (class06Filter.length > 0)
+      data = data.filter((r) => class06Filter.includes(r.Class06Description));
     if (stockStatusFilter === "inStock")    data = data.filter((r) => r.Stock > 0);
     else if (stockStatusFilter === "outOfStock") data = data.filter((r) => r.Stock === 0);
     else if (stockStatusFilter === "negative")   data = data.filter((r) => r.RealStock < 0);
@@ -332,7 +450,7 @@ export default function StockAnalyzerPage() {
         matcher([r.ItemCode, r.ItemDescriptionDescription, r.ItemGroupDescriptionDescription])
       );
     return data;
-  }, [rows, categoryFilter, stockStatusFilter, search]);
+  }, [rows, categoryFilter, class01Filter, class06Filter, stockStatusFilter, search]);
 
   // Sorted rows
   const sortedRows = useMemo(() => {
@@ -379,9 +497,22 @@ export default function StockAnalyzerPage() {
     URL.revokeObjectURL(url);
   }, [sortedRows, activeCols]);
 
+  // Cascading filter handlers — each level clears downstream selections
+  const handleCategoryFilter = useCallback((cats: string[]) => {
+    setCategoryFilter(cats);
+    setClass01Filter([]);
+    setClass06Filter([]);
+  }, [setCategoryFilter, setClass01Filter, setClass06Filter]);
+
+  const handleClass01Filter = useCallback((cats: string[]) => {
+    setClass01Filter(cats);
+    setClass06Filter([]);
+  }, [setClass01Filter, setClass06Filter]);
+
   const sizeConfig  = STOCK_TABLE_SIZE[tableSize];
-  const isLoaded    = processingState === "done" && rows.length > 0;
-  const isFiltered  = categoryFilter.length > 0 || stockStatusFilter !== "all" || search !== "";
+  const isLoaded    = rows.length > 0 && processingState !== "processing";
+  const isFiltered  = categoryFilter.length > 0 || class01Filter.length > 0 || class06Filter.length > 0 || stockStatusFilter !== "all" || search !== "";
+  const hasItemsData = class01Options.length > 0 || class06Options.length > 0;
 
   // Pagination page numbers (window of 7)
   const pageNumbers = useMemo(() => {
@@ -422,68 +553,65 @@ export default function StockAnalyzerPage() {
         </button>
       </div>
 
-      {/* ── Idle / Loading / Error ────────────────────────────────────────────── */}
-      {!isLoaded ? (
-        <div className="flex-1 flex items-center justify-center p-8">
+      {/* ── Main content: left file panel + right content ───────────────────── */}
+      <div className="flex flex-1 min-h-0">
+
+        {/* Left panel: file slots */}
+        <div className="w-[220px] shrink-0 border-r border-edge bg-surface/50 p-3 space-y-2 overflow-y-auto">
+          <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider px-1 pb-1">
+            Input Files
+          </h3>
+          <StockFileSlot
+            label="Stock Positions"
+            hint="stock-positions.csv"
+            required
+            fileName={fileName}
+            isReady={isLoaded}
+            onDrop={handleFile}
+            onClear={reset}
+          />
+          <StockFileSlot
+            label="Items CSV"
+            hint="items.csv (optional)"
+            fileName={itemsFileName}
+            isReady={!!itemsFileName}
+            onDrop={handleItemsFile}
+            onClear={clearItemsData}
+          />
+        </div>
+
+        {/* Right panel */}
+        <div className="flex-1 flex flex-col min-h-0">
           {processingState === "processing" ? (
-            <div className="text-center space-y-3">
-              <Loader2 size={32} className="mx-auto text-accent animate-spin" />
-              <p className="text-sm text-muted font-mono">Parsing file…</p>
+            <div className="flex-1 flex items-center justify-center">
+              <div className="text-center space-y-3">
+                <Loader2 size={32} className="mx-auto text-accent animate-spin" />
+                <p className="text-sm text-muted font-mono">Parsing file…</p>
+              </div>
             </div>
           ) : processingState === "error" ? (
-            <div className="text-center space-y-3 max-w-md">
-              <AlertCircle size={32} className="mx-auto text-red-400" />
-              <p className="text-sm font-semibold text-red-600">Error loading file</p>
-              <p className="text-xs text-muted font-mono break-all">{error}</p>
-              <Button variant="outline" size="sm" onClick={reset}>Try Again</Button>
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center space-y-3 max-w-md">
+                <AlertCircle size={32} className="mx-auto text-red-400" />
+                <p className="text-sm font-semibold text-red-600">Error loading file</p>
+                <p className="text-xs text-muted font-mono break-all">{error}</p>
+                <Button variant="outline" size="sm" onClick={reset}>Try Again</Button>
+              </div>
+            </div>
+          ) : !isLoaded ? (
+            <div className="flex-1 flex items-center justify-center p-8">
+              <div className="text-center space-y-2">
+                <PackageSearch size={40} className="mx-auto text-muted/30" />
+                <p className="text-sm text-muted">Upload a stock positions file to begin</p>
+                <p className="text-[11px] text-muted/50 font-mono">Supports .csv · .xlsx · .xls</p>
+              </div>
             </div>
           ) : (
-            /* Drop zone */
-            <div
-              {...getRootProps()}
-              className={cn(
-                "relative flex flex-col items-center justify-center w-full max-w-lg mx-auto py-20 rounded-2xl border-2 border-dashed cursor-pointer transition-all",
-                isDragActive
-                  ? "border-accent bg-accent/5 animate-drop"
-                  : "border-edge hover:border-accent/40 hover:bg-surface-hover"
-              )}
-            >
-              <input {...getInputProps()} />
-              <div className={cn(
-                "w-16 h-16 rounded-2xl flex items-center justify-center mb-5 transition-colors",
-                isDragActive ? "bg-accent/10" : "bg-surface border border-edge"
-              )}>
-                <Upload size={28} className={isDragActive ? "text-accent" : "text-muted/60"} />
-              </div>
-              <p className="text-sm font-semibold text-primary mb-1">
-                {isDragActive ? "Drop the file here" : "Upload Stock CSV"}
-              </p>
-              <p className="text-[12px] text-muted text-center max-w-xs">
-                Drag & drop your stock positions file, or{" "}
-                <span className="text-accent font-medium">browse</span>
-              </p>
-              <p className="text-[11px] text-muted/50 mt-4 font-mono">
-                Supports .csv · .xlsx · .xls
-              </p>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* ── Data loaded ──────────────────────────────────────────────────────── */
-        <div className="flex-1 flex flex-col min-h-0">
+            /* ── Data loaded ──────────────────────────────────────────────── */
+            <div className="flex-1 flex flex-col min-h-0">
 
           {/* Control bar */}
           <div className="shrink-0 border-b border-edge bg-surface px-4 py-2 flex items-center gap-2 flex-wrap">
-            {/* Replace file */}
-            <div {...getRootProps()} className="cursor-pointer">
-              <input {...getInputProps()} />
-              <Button variant="outline" size="sm">
-                <Upload size={12} className="mr-1.5" />
-                Replace
-              </Button>
-            </div>
-
-            <div className="w-px h-5 bg-edge shrink-0" />
 
             {/* Search */}
             <div className="relative">
@@ -562,8 +690,26 @@ export default function StockAnalyzerPage() {
             <CategoryFilter
               categories={categories}
               selected={categoryFilter}
-              onChange={setCategoryFilter}
+              onChange={handleCategoryFilter}
             />
+
+            {hasItemsData && class01Options.length > 0 && (
+              <CategoryFilter
+                categories={class01Options}
+                selected={class01Filter}
+                onChange={handleClass01Filter}
+                label="Class 01"
+              />
+            )}
+
+            {hasItemsData && class06Options.length > 0 && (
+              <CategoryFilter
+                categories={class06Options}
+                selected={class06Filter}
+                onChange={setClass06Filter}
+                label="Class 06"
+              />
+            )}
 
             <div className="w-px h-5 bg-edge shrink-0" />
 
@@ -594,6 +740,8 @@ export default function StockAnalyzerPage() {
               <button
                 onClick={() => {
                   setCategoryFilter([]);
+                  setClass01Filter([]);
+                  setClass06Filter([]);
                   setStockStatusFilter("all");
                   setSearchInput("");
                   setSearch("");
@@ -771,8 +919,10 @@ export default function StockAnalyzerPage() {
             )}
           </div>
 
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }

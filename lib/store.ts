@@ -1,8 +1,10 @@
 "use client";
 
 import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
 import type { FileKey, OutputRow, Summary, TableSize, ExportRowLimit, PreviewData, BatchProgress } from "./types";
 import { OUTPUT_COLUMNS } from "./types";
+import { idbStorage } from "./idb-storage";
 
 interface FileSlotState {
   file: File | null;
@@ -91,7 +93,9 @@ interface AppStore {
 
 const emptySlot: FileSlotState = { file: null, status: "empty" };
 
-export const useAppStore = create<AppStore>((set, get) => ({
+export const useAppStore = create<AppStore>()(
+  persist(
+    (set, get) => ({
   // Files
   files: {
     shopify: { ...emptySlot },
@@ -203,4 +207,15 @@ export const useAppStore = create<AppStore>((set, get) => ({
   // Sidebar
   sidebarCollapsed: false,
   toggleSidebar: () => set((s) => ({ sidebarCollapsed: !s.sidebarCollapsed })),
-}));
+    }),
+    {
+      name: "shopify-store",
+      storage: createJSONStorage(() => idbStorage),
+      partialize: (s) => ({
+        results: s.results,
+        summary: s.summary,
+        visibleColumns: s.visibleColumns,
+      }),
+    }
+  )
+);
