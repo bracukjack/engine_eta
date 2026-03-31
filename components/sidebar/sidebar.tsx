@@ -10,6 +10,7 @@ import {
   PackageSearch,
   Truck,
   FileBarChart,
+  Users2,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -31,6 +32,12 @@ const TOOLS = [
     name: "Stock Analyzer",
     href: "/stock-analyzer",
     icon: PackageSearch,
+    active: true,
+  },
+  {
+    name: "RFM Analysis",
+    href: "/rfm-analysis",
+    icon: Users2,
     active: true,
   },
   {
