@@ -259,6 +259,7 @@ ctx.onmessage = (e: MessageEvent) => {
       const reference = refs && refs.length > 0 ? refs.join("\n") : null;
 
       output.push({
+        No: 0,
         Title: String(row["Title"] ?? ""),
         "Variant SKU": sku,
         "Variant Quantity": Math.round(variantQty),
@@ -355,6 +356,8 @@ ctx.onmessage = (e: MessageEvent) => {
       ).length,
       b2cTotal: b2cSkus.size,
     };
+
+    output.forEach((r, i) => { r.No = i + 1; });
 
     progress("Complete", 100, "Processing complete!");
     ctx.postMessage({ type: "result", data: output, summary });

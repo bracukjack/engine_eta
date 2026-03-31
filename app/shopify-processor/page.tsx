@@ -188,10 +188,12 @@ export default function ShopifyProcessorPage() {
   // Build export data: sorted+sliced rows × visible columns, with price formatting
   const buildExportData = useCallback(() => {
     const rows = sortedRows.slice(0, exportLimit);
-    return rows.map((row) => {
+    return rows.map((row, i) => {
       const obj: Record<string, unknown> = {};
       for (const key of visibleColumns) {
-        if (PRICE_COLUMNS.has(key)) {
+        if (key === "No") {
+          obj[key] = i + 1;
+        } else if (PRICE_COLUMNS.has(key)) {
           obj[key] = formatPrice(row[key] as number | null) || 0;
         } else if (INTEGER_OUTPUT_COLUMNS.has(key)) {
           obj[key] = formatInteger(row[key] as number | null) || 0;
@@ -241,10 +243,11 @@ export default function ShopifyProcessorPage() {
       const startRow = i * rowsPerFile + 1;
       const endRow = startRow + chunks[i].length - 1;
       const filename = `shopify_processed_${date}_part${String(i + 1).padStart(pd, "0")}of${String(totalFiles).padStart(pd, "0")}_rows${String(startRow).padStart(rd, "0")}-${String(endRow).padStart(rd, "0")}.xlsx`;
-      const chunkData = chunks[i].map((row) => {
+      const chunkData = chunks[i].map((row, j) => {
         const obj: Record<string, unknown> = {};
         for (const key of visibleColumns) {
-          if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
+          if (key === "No") obj[key] = startRow + j;
+          else if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
           else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || 0;
           else obj[key] = row[key];
         }
@@ -305,10 +308,11 @@ export default function ShopifyProcessorPage() {
       const startRow = i * rowsPerFile + 1;
       const endRow = startRow + chunks[i].length - 1;
       const filename = `shopify_processed_${date}_part${String(i + 1).padStart(pd, "0")}of${String(totalFiles).padStart(pd, "0")}_rows${String(startRow).padStart(rd, "0")}-${String(endRow).padStart(rd, "0")}.csv`;
-      const chunkData = chunks[i].map((row) => {
+      const chunkData = chunks[i].map((row, j) => {
         const obj: Record<string, unknown> = {};
         for (const key of visibleColumns) {
-          if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
+          if (key === "No") obj[key] = startRow + j;
+          else if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
           else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || 0;
           else obj[key] = row[key];
         }

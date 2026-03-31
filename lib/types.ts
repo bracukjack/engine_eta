@@ -34,6 +34,7 @@ export interface WorkerError {
 export type WorkerResponse = WorkerProgress | WorkerResult | WorkerError;
 
 export interface OutputRow {
+  No: number;
   Title: string;
   "Variant SKU": string;
   "Variant Quantity": number;
@@ -64,22 +65,23 @@ export interface Summary {
   b2cTotal: number;
 }
 
-export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number; align: "left" | "center" }[] = [
+export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number; align: "left" }[] = [
+  { key: "No", label: "No", flex: 0.5, align: "left" },
   { key: "Title", label: "Title", flex: 3, align: "left" },
   { key: "Variant SKU", label: "Variant SKU", flex: 2, align: "left" },
-  { key: "Variant Quantity", label: "Qty", flex: 1, align: "center" },
-  { key: "Status", label: "Status", flex: 1, align: "center" },
-  { key: "Published", label: "Published", flex: 1, align: "center" },
-  { key: "Variant Price", label: "Price", flex: 1, align: "center" },
-  { key: "Variant Compare at Price", label: "Compare Price", flex: 1.5, align: "center" },
+  { key: "Variant Quantity", label: "Qty", flex: 1, align: "left" },
+  { key: "Status", label: "Status", flex: 1, align: "left" },
+  { key: "Published", label: "Published", flex: 1, align: "left" },
+  { key: "B2C", label: "B2C", flex: 1, align: "left" },
+  { key: "Variant Price", label: "Price", flex: 1, align: "left" },
+  { key: "Variant Compare at Price", label: "Compare Price", flex: 1.5, align: "left" },
   { key: "ETA", label: "ETA", flex: 1.5, align: "left" },
-  { key: "Variant Inventory Policy", label: "Policy", flex: 1.5, align: "center" },
-  { key: "PlannedInStock", label: "Planned", flex: 1, align: "center" },
-  { key: "PlannedOutStock", label: "Planned Out", flex: 1, align: "center" },
-  { key: "Discount %", label: "Disc %", flex: 1, align: "center" },
-  { key: "Cost per item", label: "Cost", flex: 1, align: "center" },
+  { key: "Variant Inventory Policy", label: "Policy", flex: 1.5, align: "left" },
+  { key: "PlannedInStock", label: "Planned", flex: 1, align: "left" },
+  { key: "PlannedOutStock", label: "Planned Out", flex: 1, align: "left" },
+  { key: "Discount %", label: "Disc %", flex: 1, align: "left" },
+  { key: "Cost per item", label: "Cost", flex: 1, align: "left" },
   { key: "Reference", label: "Reference", flex: 2, align: "left" },
-  { key: "B2C", label: "B2C", flex: 1, align: "center" },
 ];
 
 export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
