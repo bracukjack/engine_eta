@@ -7,6 +7,7 @@ import type {
   WorkerMessage,
   FileSlot,
   AnalysisTab,
+  RankingWeights,
 } from "@/lib/association-rules/types";
 import { DEFAULT_WORKER_FILTERS, EMPTY_FILE_SLOT } from "@/lib/association-rules/types";
 import { parseFileBuffer } from "@/lib/parsers";
@@ -18,6 +19,10 @@ import { RevenueOpportunities } from "@/components/association-rules/RevenueOppo
 import { BundleGrid } from "@/components/association-rules/BundleGrid";
 import { KpiBar } from "@/components/association-rules/KpiBar";
 import { ProgressBar } from "@/components/association-rules/ProgressBar";
+import { SequentialRulesTab } from "@/components/association-rules/SequentialRulesTab";
+import { SalespersonTable } from "@/components/association-rules/SalespersonTable";
+import { SeasonalInsights } from "@/components/association-rules/SeasonalInsights";
+import { ConflictsPanel } from "@/components/association-rules/ConflictsPanel";
 import { Button } from "@/components/ui/button";
 import { Play, Loader2 } from "lucide-react";
 
@@ -27,8 +32,20 @@ const TABS: { key: AnalysisTab; label: string }[] = [
   { key: "recommendations", label: "Item Recommendations" },
   { key: "categories", label: "Category Insights" },
   { key: "revenue", label: "Revenue Opportunities" },
-  { key: "bundles", label: "Bundle / Complete the Look" },
+  { key: "bundles", label: "Bundles" },
+  { key: "sequential", label: "Sequential" },
+  { key: "salesperson", label: "Salesperson" },
+  { key: "seasonal", label: "Seasonal" },
+  { key: "conflicts", label: "Conflicts" },
 ];
+
+const DEFAULT_RANKING_WEIGHTS: RankingWeights = {
+  lift: 0.3,
+  confidence: 0.2,
+  profitLift: 0.2,
+  stockScore: 0.2,
+  support: 0.1,
+};
 
 export default function AssociationRulesPage() {
   const workerRef = useRef<Worker | null>(null);
@@ -60,6 +77,8 @@ export default function AssociationRulesPage() {
   // Display-only filters (applied client-side, no re-run needed)
   const [hideOutOfStock, setHideOutOfStock] = useState(true);
   const [sortByRevenue, setSortByRevenue] = useState(false);
+  const [optimizeProfit, setOptimizeProfit] = useState(false);
+  const [rankingWeights, setRankingWeights] = useState<RankingWeights>(DEFAULT_RANKING_WEIGHTS);
 
   // ── UI state ─────────────────────────────────────────────────────────────
   const [tab, setTab] = useState<AnalysisTab>("recommendations");
@@ -259,6 +278,10 @@ export default function AssociationRulesPage() {
             onHideOutOfStockChange={setHideOutOfStock}
             sortByRevenue={sortByRevenue}
             onSortByRevenueChange={setSortByRevenue}
+            optimizeProfit={optimizeProfit}
+            onOptimizeProfitChange={setOptimizeProfit}
+            rankingWeights={rankingWeights}
+            onRankingWeightsChange={setRankingWeights}
           />
         </div>
 
@@ -304,7 +327,28 @@ export default function AssociationRulesPage() {
             />
           )}
           {tab === "bundles" && (
-            <BundleGrid bundles={results?.bundles ?? []} />
+            <BundleGrid
+              bundles={results?.bundles ?? []}
+              smartBundles={results?.smartBundles ?? []}
+            />
+          )}
+          {tab === "sequential" && (
+            <SequentialRulesTab rules={results?.sequentialRules ?? []} />
+          )}
+          {tab === "salesperson" && (
+            <SalespersonTable
+              metrics={results?.salespersonMetrics ?? []}
+              segments={results?.segments ?? []}
+            />
+          )}
+          {tab === "seasonal" && (
+            <SeasonalInsights data={results?.seasonalData ?? []} />
+          )}
+          {tab === "conflicts" && (
+            <ConflictsPanel
+              negativeRules={results?.negativeRules ?? []}
+              cannibalizationPairs={results?.cannibalizationPairs ?? []}
+            />
           )}
         </div>
       </div>

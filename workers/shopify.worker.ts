@@ -98,6 +98,7 @@ ctx.onmessage = (e: MessageEvent) => {
     const stockRows: Row[] = files.stock;
     const purchaseRows: Row[] = files.purchase;
     const itemRows: Row[] = files.items;
+    const publishedRows: Row[] = files.published ?? [];
 
     progress("Loading", 30, "All files loaded");
 
@@ -272,8 +273,67 @@ ctx.onmessage = (e: MessageEvent) => {
         "Discount %": discountPct,
         "Cost per item": costPerItem,
         Reference: reference,
+        B2C: "No" as const,
       });
     }
+
+    // ── STEP 6: Published Products B2C Filter (Final Override) ────────
+    progress("Published", 91, "Applying B2C published filter...");
+
+    // 6A: Detect SKU column
+    function findSkuColumn(headers: string[]): string | null {
+      const candidates = [
+        "SKU", "Sku", "sku",
+        "Variant SKU", "VariantSKU", "variant_sku",
+        "ItemCode", "Code", "ProductCode",
+        "Barcode",
+      ];
+      for (const c of candidates) {
+        if (headers.includes(c)) return c;
+      }
+      return headers[0] ?? null;
+    }
+
+    const publishedHeaders = publishedRows.length > 0 ? Object.keys(publishedRows[0]) : [];
+    const skuColumn = findSkuColumn(publishedHeaders);
+
+    if (skuColumn) {
+      progress("Published", 91, `Using SKU column: "${skuColumn}"`);
+    }
+
+    progress("Published", 92, "Building B2C SKU set...");
+
+    const b2cSkus = new Set<string>();
+
+    if (skuColumn) {
+      for (const row of publishedRows) {
+        const limitedTo = String(row["LimitedToStores"] ?? "").toLowerCase();
+        if (!limitedTo.includes("b2c")) continue;
+        const sku = String(row[skuColumn] ?? "").trim();
+        if (sku !== "") b2cSkus.add(sku);
+      }
+    }
+
+    progress("Published", 95, `Found ${b2cSkus.size} B2C SKUs`);
+
+    if (b2cSkus.size === 0) {
+      progress("Published", 96, "⚠ No B2C data found — all SKUs will be draft");
+    }
+
+    // 6B: Apply B2C override + set informational B2C column
+    for (const row of output) {
+      const sku = String(row["Variant SKU"]).trim();
+      if (b2cSkus.has(sku)) {
+        row["B2C"] = "Yes";
+      } else {
+        row["B2C"] = "No";
+        row["Status"] = "draft";
+        row["Published"] = "FALSE";
+        row["Variant Inventory Policy"] = "deny";
+      }
+    }
+
+    progress("Published", 98, "B2C filter applied");
 
     // ── Summary ────────────────────────────────────────────────────────
     const summary = {
@@ -293,6 +353,7 @@ ctx.onmessage = (e: MessageEvent) => {
       referenceFilled: output.filter(
         (r) => r.Reference !== null && r.Reference !== ""
       ).length,
+      b2cTotal: b2cSkus.size,
     };
 
     progress("Complete", 100, "Processing complete!");

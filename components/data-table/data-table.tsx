@@ -9,6 +9,190 @@ import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS, TABLE_SIZE_CONFI
 import { StatusBadge, PolicyBadge } from "@/components/status-badge/status-badge";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
+// ── Editable columns ──────────────────────────────────────────────────────────
+const EDITABLE_COLUMNS = new Set<keyof OutputRow>([
+  "Variant Quantity",
+  "Status",
+  "Published",
+  "Variant Inventory Policy",
+  "ETA",
+  "Variant Price",
+  "Variant Compare at Price",
+  "Cost per item",
+  "Discount %",
+]);
+
+type SelectOption = { value: string; label: string };
+
+const COLUMN_OPTIONS: Partial<Record<keyof OutputRow, SelectOption[]>> = {
+  Status: [
+    { value: "active", label: "Active" },
+    { value: "draft", label: "Draft" },
+    { value: "archived", label: "Archived" },
+  ],
+  Published: [
+    { value: "TRUE", label: "True" },
+    { value: "FALSE", label: "False" },
+  ],
+  "Variant Inventory Policy": [
+    { value: "continue", label: "Continue" },
+    { value: "deny", label: "Deny" },
+  ],
+};
+
+// ── EditableCell ──────────────────────────────────────────────────────────────
+function EditableCell({
+  sku,
+  column,
+  row,
+  fontSize,
+}: {
+  sku: string;
+  column: keyof OutputRow;
+  row: OutputRow;
+  fontSize: string;
+}) {
+  const updateRow = useAppStore((s) => s.updateRow);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const selectRef = useRef<HTMLSelectElement>(null);
+
+  const value = row[column];
+  const options = COLUMN_OPTIONS[column];
+  const isSelect = !!options;
+
+  // On double-click → enter edit mode
+  const handleDoubleClick = useCallback(() => {
+    if (!EDITABLE_COLUMNS.has(column)) return;
+    setDraft(value === null || value === undefined ? "" : String(value));
+    setEditing(true);
+  }, [column, value]);
+
+  // Focus input/select when editing starts
+  useEffect(() => {
+    if (!editing) return;
+    if (isSelect) {
+      selectRef.current?.focus();
+    } else {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    }
+  }, [editing, isSelect]);
+
+  const commit = useCallback((raw: string) => {
+    setEditing(false);
+    const trimmed = raw.trim();
+
+    if (column === "Status") {
+      const v = trimmed as "active" | "draft" | "archived";
+      if (v !== row.Status) updateRow(sku, { Status: v });
+      return;
+    }
+    if (column === "Published") {
+      const v = trimmed as "TRUE" | "FALSE";
+      if (v !== row.Published) updateRow(sku, { Published: v });
+      return;
+    }
+    if (column === "Variant Inventory Policy") {
+      const v = trimmed as "continue" | "deny";
+      if (v !== row["Variant Inventory Policy"]) updateRow(sku, { "Variant Inventory Policy": v });
+      return;
+    }
+    if (column === "ETA") {
+      const v = trimmed === "" ? null : trimmed;
+      if (v !== row.ETA) updateRow(sku, { ETA: v });
+      return;
+    }
+    if (column === "Variant Quantity") {
+      const n = parseInt(trimmed, 10);
+      const v = isNaN(n) ? 0 : Math.max(0, n);
+      if (v !== row["Variant Quantity"]) updateRow(sku, { "Variant Quantity": v });
+      return;
+    }
+    if (column === "Discount %") {
+      const pct = trimmed === "" ? null : parseFloat(trimmed);
+      const validPct = pct === null || isNaN(pct) ? null : pct;
+      // Recalculate price from compare-at when discount changes
+      const compareAt = row["Variant Compare at Price"];
+      let newPrice = row["Variant Price"];
+      if (validPct !== null && compareAt !== null) {
+        newPrice = Math.round(compareAt * (1 - validPct / 100) * 100) / 100;
+      }
+      updateRow(sku, { "Discount %": validPct, "Variant Price": newPrice });
+      return;
+    }
+    // Numeric price columns
+    if (PRICE_COLUMNS.has(column)) {
+      const n = trimmed === "" ? null : parseFloat(trimmed);
+      const v = n === null || isNaN(n) ? null : n;
+      updateRow(sku, { [column]: v } as Partial<OutputRow>);
+      return;
+    }
+  }, [column, row, sku, updateRow]);
+
+  const cancel = useCallback(() => setEditing(false), []);
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === "Enter") { e.preventDefault(); commit(draft); }
+    if (e.key === "Escape") cancel();
+  }, [draft, commit, cancel]);
+
+  // Select: commit immediately on change
+  const handleSelectChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    commit(e.target.value);
+  }, [commit]);
+
+  if (editing && isSelect) {
+    return (
+      <select
+        ref={selectRef}
+        value={String(value ?? "")}
+        onChange={handleSelectChange}
+        onBlur={cancel}
+        onKeyDown={(e) => e.key === "Escape" && cancel()}
+        className="w-full border border-accent rounded px-1 bg-white shadow-sm focus:outline-none capitalize"
+        style={{ fontSize, padding: "1px 4px" }}
+      >
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+      </select>
+    );
+  }
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        type="text"
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => commit(draft)}
+        onKeyDown={handleKeyDown}
+        className="w-full border border-accent rounded px-1 bg-white focus:outline-none font-mono"
+        style={{ fontSize, padding: "1px 4px" }}
+      />
+    );
+  }
+
+  const isEditable = EDITABLE_COLUMNS.has(column);
+
+  return (
+    <div
+      onDoubleClick={isEditable ? handleDoubleClick : undefined}
+      className={cn("w-full h-full flex items-center", isEditable && "cursor-text group")}
+      title={isEditable ? "Double-click to edit" : undefined}
+    >
+      <CellValue column={column} value={value} fontSize={fontSize} />
+      {isEditable && (
+        <span className="ml-1 opacity-0 group-hover:opacity-30 text-[8px] text-muted shrink-0">✎</span>
+      )}
+    </div>
+  );
+}
+
+
 function ReferenceCell({ value, fontSize }: { value: string; fontSize: string }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -70,6 +254,16 @@ function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value
   if (column === "Variant Inventory Policy") {
     return <PolicyBadge policy={value as "continue" | "deny"} />;
   }
+  if (column === "B2C") {
+    if (value === "Yes") {
+      return (
+        <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-100 text-blue-700">
+          B2C
+        </span>
+      );
+    }
+    return <span className="text-muted/40 text-[10px]">—</span>;
+  }
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted/50">—</span>;
   }
@@ -96,6 +290,7 @@ export function DataTable() {
   const etaFilter = useAppStore((s) => s.etaFilter);
   const discountFilter = useAppStore((s) => s.discountFilter);
   const policyFilter = useAppStore((s) => s.policyFilter);
+  const b2cFilter = useAppStore((s) => s.b2cFilter);
   const search = useAppStore((s) => s.search);
   const sortColumn = useAppStore((s) => s.sortColumn);
   const sortDirection = useAppStore((s) => s.sortDirection);
@@ -145,6 +340,11 @@ export function DataTable() {
     if (policyFilter !== "all") {
       data = data.filter((r) => r["Variant Inventory Policy"] === policyFilter);
     }
+    if (b2cFilter === "yes") {
+      data = data.filter((r) => r.B2C === "Yes");
+    } else if (b2cFilter === "no") {
+      data = data.filter((r) => r.B2C === "No");
+    }
     const matcher = buildSearchMatcher(search);
     if (matcher) {
       data = data.filter((r) =>
@@ -152,7 +352,7 @@ export function DataTable() {
       );
     }
     return data;
-  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, search]);
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, search]);
 
   // Sort data with nulls-to-bottom
   const sortedData = useMemo(() => {
@@ -197,7 +397,7 @@ export function DataTable() {
                 style={{ flex: col.flex, padding: sizeConfig.cellPadding, fontSize: sizeConfig.fontSize }}
                 title={col.key !== "Reference" && row[col.key] != null ? String(row[col.key]) : undefined}
               >
-                <CellValue column={col.key} value={row[col.key]} fontSize={sizeConfig.fontSize} />
+                <EditableCell sku={row["Variant SKU"]} column={col.key} row={row} fontSize={sizeConfig.fontSize} />
               </div>
             ))}
           </div>

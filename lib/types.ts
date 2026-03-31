@@ -1,4 +1,4 @@
-export type FileKey = "shopify" | "sales" | "stock" | "purchase" | "items";
+export type FileKey = "shopify" | "sales" | "stock" | "purchase" | "items" | "published";
 
 export interface FileSlot {
   key: FileKey;
@@ -37,7 +37,7 @@ export interface OutputRow {
   Title: string;
   "Variant SKU": string;
   "Variant Quantity": number;
-  Status: "active" | "draft";
+  Status: "active" | "draft" | "archived";
   Published: "TRUE" | "FALSE";
   "Variant Price": number | null;
   "Variant Compare at Price": number | null;
@@ -48,6 +48,7 @@ export interface OutputRow {
   "Discount %": number | null;
   "Cost per item": number | null;
   Reference: string | null;
+  B2C: "Yes" | "No";
 }
 
 export interface Summary {
@@ -60,6 +61,7 @@ export interface Summary {
   hasDiscount: number;
   costFilled: number;
   referenceFilled: number;
+  b2cTotal: number;
 }
 
 export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number; align: "left" | "center" }[] = [
@@ -77,6 +79,7 @@ export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number
   { key: "Discount %", label: "Disc %", flex: 1, align: "center" },
   { key: "Cost per item", label: "Cost", flex: 1, align: "center" },
   { key: "Reference", label: "Reference", flex: 2, align: "left" },
+  { key: "B2C", label: "B2C", flex: 1, align: "center" },
 ];
 
 export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
@@ -129,6 +132,7 @@ export const HIGHLIGHTED_PREVIEW_COLUMNS: Record<FileKey, Set<string>> = {
   stock: new Set(["ItemCode", "Stock", "PlannedInStock", "PlannedOutStock"]),
   purchase: new Set(["Item", "Receipt date"]),
   items: new Set(["Code", "SalesPrice", "Extra field:  Retail Price EUR", "Class_09Description"]),
+  published: new Set(["SKU", "LimitedToStores"]),
 };
 
 export const FILE_SLOTS_CONFIG: { key: FileKey; label: string; hint: string }[] = [
@@ -137,4 +141,5 @@ export const FILE_SLOTS_CONFIG: { key: FileKey; label: string; hint: string }[] 
   { key: "stock", label: "Stock Positions", hint: "stock-positions.csv (UTF-16)" },
   { key: "purchase", label: "Purchase Orders", hint: "purchase-orders.csv (UTF-16)" },
   { key: "items", label: "Items", hint: "items.csv (UTF-16)" },
+  { key: "published", label: "Published Products", hint: "publishedproducts.xlsx" },
 ];

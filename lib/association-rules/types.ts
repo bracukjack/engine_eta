@@ -25,6 +25,102 @@ export interface ItemRule {
   consequentItemGroup: string;
   consequentSubCategory: string;
   consequentSalesPrice: number;
+  // Phase 2
+  profitLift: number; // lift * (salesPrice - costPrice)
+  basketUplift: number; // avg basket value WITH consequent vs WITHOUT
+  stabilityScore: "low" | "medium" | "high"; // confidence CV across months
+  alternative: { code: string; name: string; stock: StockInfo } | null; // in-stock alt in same subCategory
+}
+
+// ── Sequential Rules ────────────────────────────────────────────────────────
+
+export interface SequentialRule {
+  antecedent: string[];
+  consequent: string[];
+  antecedentNames: string[];
+  consequentNames: string[];
+  support: number;
+  confidence: number;
+  lift: number;
+  count: number;
+  avgDaysBetween: number;
+  consequentStock: StockInfo;
+}
+
+// ── RFM Segmentation ────────────────────────────────────────────────────────
+
+export type RFMSegment = "champion" | "loyal" | "potential" | "at_risk" | "lost";
+
+export interface SegmentSummary {
+  segment: RFMSegment;
+  customerCount: number;
+  avgRecency: number; // days since last order
+  avgFrequency: number; // orders per customer
+  avgMonetary: number; // avg total spend
+  topItems: string[]; // top 5 item codes
+  topItemNames: string[];
+}
+
+// ── Salesperson Metrics ─────────────────────────────────────────────────────
+
+export interface SalespersonMetric {
+  name: string;
+  totalOrders: number;
+  totalRevenue: number;
+  uniqueItems: number;
+  avgBasketSize: number;
+  avgBasketValue: number;
+  topItems: string[];
+  topItemNames: string[];
+  crossSellRate: number; // % orders with 2+ categories
+}
+
+// ── Seasonal Insights ───────────────────────────────────────────────────────
+
+export interface SeasonalPeriod {
+  period: string; // "2024-01", "Q1 2024", etc.
+  orderCount: number;
+  revenue: number;
+  topItems: string[];
+  topItemNames: string[];
+  avgBasketSize: number;
+}
+
+// ── Negative Rules & Cannibalization ────────────────────────────────────────
+
+export interface NegativeRule {
+  itemA: string;
+  itemB: string;
+  nameA: string;
+  nameB: string;
+  observedSupport: number;
+  expectedSupport: number;
+  lift: number; // < 1.0
+  itemGroupA: string;
+  itemGroupB: string;
+}
+
+export interface CannibalizationPair {
+  itemA: string;
+  itemB: string;
+  nameA: string;
+  nameB: string;
+  subCategory: string;
+  priceA: number;
+  priceB: number;
+  coOccurrenceRate: number; // how rarely they appear together
+  soloRateA: number; // % orders with A but not B
+  soloRateB: number; // % orders with B but not A
+}
+
+// ── Ranking Weights ─────────────────────────────────────────────────────────
+
+export interface RankingWeights {
+  lift: number;
+  confidence: number;
+  profitLift: number;
+  stockScore: number;
+  support: number;
 }
 
 // ── Category (Tab 2) ────────────────────────────────────────────────────────
@@ -90,6 +186,14 @@ export interface AnalysisResults {
   salespersons: string[];
   itemGroups: string[];
   salespersonItems: Record<string, string[]>;
+  // Phase 2
+  sequentialRules: SequentialRule[];
+  segments: SegmentSummary[];
+  negativeRules: NegativeRule[];
+  cannibalizationPairs: CannibalizationPair[];
+  salespersonMetrics: SalespersonMetric[];
+  seasonalData: SeasonalPeriod[];
+  smartBundles: Bundle[];
 }
 
 // ── Worker filters (sent to worker, need re-run) ────────────────────────────
@@ -149,4 +253,8 @@ export type AnalysisTab =
   | "recommendations"
   | "categories"
   | "revenue"
-  | "bundles";
+  | "bundles"
+  | "sequential"
+  | "salesperson"
+  | "seasonal"
+  | "conflicts";
