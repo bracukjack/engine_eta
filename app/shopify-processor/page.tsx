@@ -339,7 +339,7 @@ export default function ShopifyProcessorPage() {
 
   // Read preview data when files are uploaded / removed
   const prevFilesRef = useRef<Record<FileKey, string | null>>({
-    shopify: null, sales: null, stock: null, purchase: null, items: null,
+    shopify: null, sales: null, stock: null, purchase: null, items: null, published: null,
   });
 
   useEffect(() => {
