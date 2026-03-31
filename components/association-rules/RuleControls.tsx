@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { WorkerFilters } from "@/lib/association-rules/types";
+import type { WorkerFilters, RankingWeights } from "@/lib/association-rules/types";
 import { ChevronDown, ChevronRight } from "lucide-react";
 
 interface Props {
@@ -13,6 +13,10 @@ interface Props {
   onHideOutOfStockChange: (v: boolean) => void;
   sortByRevenue: boolean;
   onSortByRevenueChange: (v: boolean) => void;
+  optimizeProfit: boolean;
+  onOptimizeProfitChange: (v: boolean) => void;
+  rankingWeights: RankingWeights;
+  onRankingWeightsChange: (w: RankingWeights) => void;
 }
 
 function Section({
@@ -85,6 +89,10 @@ export function RuleControls({
   onHideOutOfStockChange,
   sortByRevenue,
   onSortByRevenueChange,
+  optimizeProfit,
+  onOptimizeProfitChange,
+  rankingWeights,
+  onRankingWeightsChange,
 }: Props) {
   return (
     <div className="space-y-0">
@@ -221,6 +229,65 @@ export function RuleControls({
             />
             Sort by Revenue Lift
           </label>
+          <label className="flex items-center gap-2 text-xs text-primary cursor-pointer">
+            <input
+              type="checkbox"
+              checked={optimizeProfit}
+              onChange={(e) => onOptimizeProfitChange(e.target.checked)}
+              className="rounded border-edge accent-accent"
+            />
+            Optimize for Profit
+          </label>
+        </div>
+      </Section>
+
+      <Section title="Ranking Weights" defaultOpen={false}>
+        <div className="space-y-3">
+          <SliderField
+            label="Lift"
+            value={rankingWeights.lift}
+            min={0}
+            max={1}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => onRankingWeightsChange({ ...rankingWeights, lift: v })}
+          />
+          <SliderField
+            label="Confidence"
+            value={rankingWeights.confidence}
+            min={0}
+            max={1}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => onRankingWeightsChange({ ...rankingWeights, confidence: v })}
+          />
+          <SliderField
+            label="Profit"
+            value={rankingWeights.profitLift}
+            min={0}
+            max={1}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => onRankingWeightsChange({ ...rankingWeights, profitLift: v })}
+          />
+          <SliderField
+            label="Stock Score"
+            value={rankingWeights.stockScore}
+            min={0}
+            max={1}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => onRankingWeightsChange({ ...rankingWeights, stockScore: v })}
+          />
+          <SliderField
+            label="Support"
+            value={rankingWeights.support}
+            min={0}
+            max={1}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => onRankingWeightsChange({ ...rankingWeights, support: v })}
+          />
         </div>
       </Section>
     </div>

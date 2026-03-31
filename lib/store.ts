@@ -28,17 +28,20 @@ interface AppStore {
   setResults: (data: OutputRow[], summary: Summary) => void;
   setError: (msg: string) => void;
   reset: () => void;
+  updateRow: (sku: string, patch: Partial<OutputRow>) => void;
 
   // ── Filters ────────────────────────────────────────────────────────
   statusFilter: "all" | "active" | "draft";
   etaFilter: "all" | "yes" | "no";
   discountFilter: "all" | "yes" | "no";
   policyFilter: "all" | "continue" | "deny";
+  b2cFilter: "all" | "yes" | "no";
   search: string;
   setStatusFilter: (f: "all" | "active" | "draft") => void;
   setEtaFilter: (f: "all" | "yes" | "no") => void;
   setDiscountFilter: (f: "all" | "yes" | "no") => void;
   setPolicyFilter: (f: "all" | "continue" | "deny") => void;
+  setB2cFilter: (f: "all" | "yes" | "no") => void;
   setSearch: (s: string) => void;
 
   // ── Column Visibility ──────────────────────────────────────────────
@@ -96,6 +99,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     stock: { ...emptySlot },
     purchase: { ...emptySlot },
     items: { ...emptySlot },
+    published: { ...emptySlot },
   },
   setFile: (key, file) =>
     set((s) => ({
@@ -124,17 +128,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
     set({ processingState: "error", error: msg, progress: null }),
   reset: () =>
     set({ processingState: "idle", progress: null, error: null, results: [], summary: null }),
+  updateRow: (sku, patch) =>
+    set((s) => ({
+      results: s.results.map((r) =>
+        r["Variant SKU"] === sku ? { ...r, ...patch } : r
+      ),
+    })),
 
   // Filters
   statusFilter: "all",
   etaFilter: "all",
   discountFilter: "all",
   policyFilter: "all",
+  b2cFilter: "all",
   search: "",
   setStatusFilter: (f) => set({ statusFilter: f }),
   setEtaFilter: (f) => set({ etaFilter: f }),
   setDiscountFilter: (f) => set({ discountFilter: f }),
   setPolicyFilter: (f) => set({ policyFilter: f }),
+  setB2cFilter: (f) => set({ b2cFilter: f }),
   setSearch: (s) => set({ search: s }),
 
   // Column Visibility
@@ -178,7 +190,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setBatchProgress: (p) => set({ batchProgress: p }),
 
   // Preview
-  previewData: { shopify: null, sales: null, stock: null, purchase: null, items: null },
+  previewData: { shopify: null, sales: null, stock: null, purchase: null, items: null, published: null },
   previewTab: null,
   previewRowLimit: 100,
   previewSearch: "",

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 
 interface Props {
   bundles: Bundle[];
+  smartBundles?: Bundle[];
 }
 
 function BundleCard({ bundle }: { bundle: Bundle }) {
@@ -121,8 +122,8 @@ function BundleCard({ bundle }: { bundle: Bundle }) {
   );
 }
 
-export function BundleGrid({ bundles }: Props) {
-  if (bundles.length === 0) {
+export function BundleGrid({ bundles, smartBundles = [] }: Props) {
+  if (bundles.length === 0 && smartBundles.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted text-xs p-8">
         No bundles detected. Bundles require 3+ items spanning 2+ categories in
@@ -132,11 +133,32 @@ export function BundleGrid({ bundles }: Props) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
-        {bundles.map((bundle) => (
-          <BundleCard key={bundle.id} bundle={bundle} />
-        ))}
+    <div className="flex-1 overflow-y-auto p-4 space-y-6">
+      {smartBundles.length > 0 && (
+        <div>
+          <h3 className="text-xs font-semibold text-primary mb-3 flex items-center gap-1.5">
+            Smart Bundles
+            <span className="text-[10px] font-normal text-muted">(profit-optimized, in-stock)</span>
+          </h3>
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+            {smartBundles.map((bundle) => (
+              <BundleCard key={bundle.id} bundle={bundle} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        {smartBundles.length > 0 && (
+          <h3 className="text-xs font-semibold text-primary mb-3">
+            Frequency-Based Bundles
+          </h3>
+        )}
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-3">
+          {bundles.map((bundle) => (
+            <BundleCard key={bundle.id} bundle={bundle} />
+          ))}
+        </div>
       </div>
     </div>
   );

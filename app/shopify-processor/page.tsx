@@ -14,7 +14,7 @@ import { ColumnToggle } from "@/components/column-toggle/column-toggle";
 import { Button } from "@/components/ui/button";
 import { Play, Download, FileSpreadsheet, Loader2, ChevronDown, X } from "lucide-react";
 
-const FILE_KEYS: FileKey[] = ["shopify", "sales", "stock", "purchase", "items"];
+const FILE_KEYS: FileKey[] = ["shopify", "sales", "stock", "purchase", "items", "published"];
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
@@ -41,12 +41,14 @@ export default function ShopifyProcessorPage() {
   const etaFilter = useAppStore((s) => s.etaFilter);
   const discountFilter = useAppStore((s) => s.discountFilter);
   const policyFilter = useAppStore((s) => s.policyFilter);
+  const b2cFilter = useAppStore((s) => s.b2cFilter);
   const search = useAppStore((s) => s.search);
   const setSearch = useAppStore((s) => s.setSearch);
   const setStatusFilter = useAppStore((s) => s.setStatusFilter);
   const setEtaFilter = useAppStore((s) => s.setEtaFilter);
   const setDiscountFilter = useAppStore((s) => s.setDiscountFilter);
   const setPolicyFilter = useAppStore((s) => s.setPolicyFilter);
+  const setB2cFilter = useAppStore((s) => s.setB2cFilter);
   const visibleColumns = useAppStore((s) => s.visibleColumns);
   const sortColumn = useAppStore((s) => s.sortColumn);
   const sortDirection = useAppStore((s) => s.sortDirection);
@@ -95,6 +97,8 @@ export default function ShopifyProcessorPage() {
     if (discountFilter === "yes") data = data.filter((r) => r["Discount %"] !== null);
     else if (discountFilter === "no") data = data.filter((r) => r["Discount %"] === null);
     if (policyFilter !== "all") data = data.filter((r) => r["Variant Inventory Policy"] === policyFilter);
+    if (b2cFilter === "yes") data = data.filter((r) => r.B2C === "Yes");
+    else if (b2cFilter === "no") data = data.filter((r) => r.B2C === "No");
     const matcher = buildSearchMatcher(search);
     if (matcher) {
       data = data.filter((r) =>
@@ -102,7 +106,7 @@ export default function ShopifyProcessorPage() {
       );
     }
     return data;
-  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, search]);
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, search]);
 
   // Sorted rows (for export — same sort as DataTable)
   const sortedRows = useMemo(() => {
@@ -129,7 +133,7 @@ export default function ShopifyProcessorPage() {
     return Math.min(exportRowLimit, sortedRows.length);
   }, [exportRowLimit, customRowLimit, sortedRows.length]);
 
-  const isFiltered = statusFilter !== "all" || etaFilter !== "all" || discountFilter !== "all" || policyFilter !== "all" || search !== "";
+  const isFiltered = statusFilter !== "all" || etaFilter !== "all" || discountFilter !== "all" || policyFilter !== "all" || b2cFilter !== "all" || search !== "";
 
   // Initialize worker
   useEffect(() => {
@@ -515,6 +519,7 @@ export default function ShopifyProcessorPage() {
             <StatChip label="Total" value={summary.total} accent />
             <StatChip label="Active" value={summary.active} />
             <StatChip label="Draft" value={summary.draft} />
+            <StatChip label="B2C" value={summary.b2cTotal} />
             <StatChip label="Continue" value={summary.continueCount} />
             <StatChip label="Deny" value={summary.deny} />
             <StatChip label="ETA" value={summary.etaFilled} />
@@ -541,10 +546,12 @@ export default function ShopifyProcessorPage() {
             etaFilter={etaFilter}
             discountFilter={discountFilter}
             policyFilter={policyFilter}
+            b2cFilter={b2cFilter}
             setStatusFilter={setStatusFilter}
             setEtaFilter={setEtaFilter}
             setDiscountFilter={setDiscountFilter}
             setPolicyFilter={setPolicyFilter}
+            setB2cFilter={setB2cFilter}
           />
         </div>
       </div>
@@ -558,20 +565,24 @@ function RightPanel({
   etaFilter,
   discountFilter,
   policyFilter,
+  b2cFilter,
   setStatusFilter,
   setEtaFilter,
   setDiscountFilter,
   setPolicyFilter,
+  setB2cFilter,
 }: {
   isFiltered: boolean;
   statusFilter: string;
   etaFilter: string;
   discountFilter: string;
   policyFilter: string;
+  b2cFilter: string;
   setStatusFilter: (v: "all" | "active" | "draft") => void;
   setEtaFilter: (v: "all" | "yes" | "no") => void;
   setDiscountFilter: (v: "all" | "yes" | "no") => void;
   setPolicyFilter: (v: "all" | "continue" | "deny") => void;
+  setB2cFilter: (v: "all" | "yes" | "no") => void;
 }) {
   const [tab, setTab] = useState<"output" | "preview">("output");
   const previewData = useAppStore((s) => s.previewData);
@@ -659,6 +670,16 @@ function RightPanel({
             ]}
             onChange={(v) => setPolicyFilter(v as "all" | "continue" | "deny")}
           />
+          <FilterSelect
+            label="B2C"
+            value={b2cFilter}
+            options={[
+              { value: "all", label: "All" },
+              { value: "yes", label: "Yes" },
+              { value: "no", label: "No" },
+            ]}
+            onChange={(v) => setB2cFilter(v as "all" | "yes" | "no")}
+          />
           {isFiltered && (
             <div className="flex items-center gap-1.5">
               {statusFilter !== "all" && (
@@ -672,6 +693,9 @@ function RightPanel({
               )}
               {policyFilter !== "all" && (
                 <FilterChip label={`Policy: ${policyFilter}`} onRemove={() => setPolicyFilter("all")} />
+              )}
+              {b2cFilter !== "all" && (
+                <FilterChip label={`B2C: ${b2cFilter}`} onRemove={() => setB2cFilter("all")} />
               )}
             </div>
           )}

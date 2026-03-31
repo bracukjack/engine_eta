@@ -9,7 +9,7 @@ import { ArrowUp, ArrowDown, ArrowRight, ChevronDown, ChevronRight } from "lucid
 
 const ROW_HEIGHT = 48;
 
-type SortKey = "lift" | "confidence" | "support" | "count" | "revenueLift";
+type SortKey = "lift" | "confidence" | "support" | "count" | "revenueLift" | "profitLift" | "basketUplift";
 
 interface Props {
   rules: ItemRule[];
@@ -121,15 +121,19 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
   };
 
   const COLS = [
-    { key: "antecedent", label: "If customer buys", width: 220 },
+    { key: "antecedent", label: "If customer buys", width: 200 },
     { key: "arrow", label: "", width: 28 },
-    { key: "consequent", label: "Recommend", width: 220 },
-    { key: "confidence", label: "Confidence", width: 95, sortable: true },
-    { key: "lift", label: "Lift", width: 75, sortable: true },
-    { key: "revenueLift", label: "Rev. Lift", width: 95, sortable: true },
-    { key: "stock", label: "Stock", width: 140 },
-    { key: "support", label: "Support", width: 80, sortable: true },
-    { key: "count", label: "Count", width: 65, sortable: true },
+    { key: "consequent", label: "Recommend", width: 200 },
+    { key: "confidence", label: "Conf.", width: 80, sortable: true },
+    { key: "lift", label: "Lift", width: 65, sortable: true },
+    { key: "revenueLift", label: "Rev.Lift", width: 80, sortable: true },
+    { key: "profitLift", label: "Profit", width: 75, sortable: true },
+    { key: "basketUplift", label: "Basket+", width: 70, sortable: true },
+    { key: "stability", label: "Stability", width: 70 },
+    { key: "stock", label: "Stock", width: 120 },
+    { key: "alternative", label: "Alternative", width: 130 },
+    { key: "support", label: "Support", width: 70, sortable: true },
+    { key: "count", label: "Count", width: 55, sortable: true },
   ] as const;
   const TOTAL_WIDTH = COLS.reduce((s, c) => s + c.width, 0);
 
@@ -163,7 +167,7 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
               {/* Antecedent */}
               <div
                 className="px-1.5 truncate shrink-0"
-                style={{ width: 220 - 5 }}
+                style={{ width: 200 - 5 }}
               >
                 <span className="font-mono text-[11px]">
                   {r.antecedent.join(", ")}
@@ -181,7 +185,7 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
                 <ArrowRight size={12} className="text-muted" />
               </div>
               {/* Consequent */}
-              <div className="px-1.5 truncate shrink-0" style={{ width: 220 }}>
+              <div className="px-1.5 truncate shrink-0" style={{ width: 200 }}>
                 <span className="font-mono text-[11px]">
                   {r.consequent.join(", ")}
                 </span>
@@ -193,7 +197,7 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
               {/* Confidence */}
               <div
                 className="px-1.5 font-mono text-xs text-center shrink-0"
-                style={{ width: 95 }}
+                style={{ width: 80 }}
               >
                 {(r.confidence * 100).toFixed(1)}%
               </div>
@@ -207,32 +211,70 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
                       ? "text-amber-600"
                       : "text-primary"
                 )}
-                style={{ width: 75 }}
+                style={{ width: 65 }}
               >
                 {r.lift.toFixed(2)}
               </div>
               {/* Revenue Lift */}
               <div
                 className="px-1.5 font-mono text-xs text-center shrink-0"
-                style={{ width: 95 }}
+                style={{ width: 80 }}
               >
                 {r.revenueLift.toFixed(0)}
               </div>
+              {/* Profit Lift */}
+              <div
+                className="px-1.5 font-mono text-xs text-center shrink-0"
+                style={{ width: 75 }}
+              >
+                {r.profitLift.toFixed(0)}
+              </div>
+              {/* Basket Uplift */}
+              <div
+                className={cn(
+                  "px-1.5 font-mono text-xs text-center shrink-0",
+                  r.basketUplift > 0.2 ? "text-emerald-600 font-semibold" : ""
+                )}
+                style={{ width: 70 }}
+              >
+                {r.basketUplift > 0 ? `+${(r.basketUplift * 100).toFixed(0)}%` : "—"}
+              </div>
+              {/* Stability */}
+              <div className="px-1.5 shrink-0 text-center" style={{ width: 70 }}>
+                <span className={cn(
+                  "inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold",
+                  r.stabilityScore === "high" ? "bg-emerald-100 text-emerald-700" :
+                  r.stabilityScore === "medium" ? "bg-amber-100 text-amber-700" :
+                  "bg-red-100 text-red-700"
+                )}>
+                  {r.stabilityScore}
+                </span>
+              </div>
               {/* Stock */}
-              <div className="px-1.5 shrink-0" style={{ width: 140 }}>
+              <div className="px-1.5 shrink-0" style={{ width: 120 }}>
                 <StockBadge stock={r.consequentStock} />
+              </div>
+              {/* Alternative */}
+              <div className="px-1.5 shrink-0 truncate" style={{ width: 130 }}>
+                {r.alternative ? (
+                  <span className="text-[10px] text-blue-600" title={`${r.alternative.code}: ${r.alternative.name}`}>
+                    {r.alternative.code}
+                  </span>
+                ) : (
+                  <span className="text-[10px] text-muted">—</span>
+                )}
               </div>
               {/* Support */}
               <div
                 className="px-1.5 font-mono text-xs text-center shrink-0"
-                style={{ width: 80 }}
+                style={{ width: 70 }}
               >
                 {(r.support * 100).toFixed(2)}%
               </div>
               {/* Count */}
               <div
                 className="px-1.5 font-mono text-xs text-center shrink-0"
-                style={{ width: 65 }}
+                style={{ width: 55 }}
               >
                 {r.count}
               </div>
@@ -339,7 +381,7 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
               <p className="text-muted font-mono text-[11px]">
                 {expandedRule.consequent.join(", ")}
               </p>
-              <div className="flex gap-4 text-[11px] text-muted">
+              <div className="flex gap-4 text-[11px] text-muted flex-wrap">
                 <span>
                   Group:{" "}
                   <strong className="text-primary">
@@ -360,6 +402,28 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
                       : "—"}
                   </strong>
                 </span>
+                <span>
+                  Profit Lift:{" "}
+                  <strong className="text-primary">{expandedRule.profitLift.toFixed(0)}</strong>
+                </span>
+                <span>
+                  Basket Uplift:{" "}
+                  <strong className="text-primary">
+                    {expandedRule.basketUplift > 0 ? `+${(expandedRule.basketUplift * 100).toFixed(1)}%` : "—"}
+                  </strong>
+                </span>
+                <span>
+                  Stability:{" "}
+                  <strong className="text-primary">{expandedRule.stabilityScore}</strong>
+                </span>
+                {expandedRule.alternative && (
+                  <span>
+                    Alt:{" "}
+                    <strong className="text-blue-600">
+                      {expandedRule.alternative.code} ({expandedRule.alternative.name})
+                    </strong>
+                  </span>
+                )}
               </div>
             </div>
             <div>

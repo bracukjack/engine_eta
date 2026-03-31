@@ -2,10 +2,17 @@
 
 import { Badge } from "@/components/ui/badge";
 
-type StatusType = "active" | "draft";
+type StatusType = "active" | "draft" | "archived";
 type PolicyType = "continue" | "deny";
 
 export function StatusBadge({ status }: { status: StatusType }) {
+  if (status === "archived") {
+    return (
+      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-zinc-100 text-zinc-500 capitalize">
+        archived
+      </span>
+    );
+  }
   return <Badge variant={status}>{status}</Badge>;
 }
 
