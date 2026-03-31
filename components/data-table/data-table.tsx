@@ -264,19 +264,19 @@ function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value
     }
     return <span className="text-muted/40 text-[10px]">—</span>;
   }
+  if (PRICE_COLUMNS.has(column)) {
+    const formatted = formatPrice(value as number | null);
+    return <span className="font-mono" style={{ fontSize }}>{formatted || "0,00"}</span>;
+  }
+  if (INTEGER_OUTPUT_COLUMNS.has(column)) {
+    const formatted = formatInteger(value as number | null);
+    return <span className="font-mono" style={{ fontSize }}>{formatted !== "" ? formatted : "0"}</span>;
+  }
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted/50">—</span>;
   }
   if (column === "Reference") {
     return <ReferenceCell value={String(value)} fontSize={fontSize} />;
-  }
-  if (PRICE_COLUMNS.has(column)) {
-    const formatted = formatPrice(value as number | null);
-    return formatted ? <span className="font-mono" style={{ fontSize }}>{formatted}</span> : <span className="text-muted/50">—</span>;
-  }
-  if (INTEGER_OUTPUT_COLUMNS.has(column)) {
-    const formatted = formatInteger(value as number | null);
-    return formatted !== "" ? <span className="font-mono" style={{ fontSize }}>{formatted}</span> : <span className="text-muted/50">—</span>;
   }
   if (typeof value === "number") {
     return <span className="font-mono" style={{ fontSize }}>{value}</span>;
@@ -374,7 +374,7 @@ export function DataTable() {
 
   const Row = useCallback(
     ({ index, style }: { index: number; style: React.CSSProperties }) => {
-      const row = sortedData[index];
+      const row = { ...sortedData[index], No: index + 1 };
       const policy = row["Variant Inventory Policy"];
       return (
         <div
@@ -390,10 +390,7 @@ export function DataTable() {
             {activeCols.map((col) => (
               <div
                 key={col.key}
-                className={cn(
-                  "truncate shrink-0",
-                  col.align === "center" ? "text-center" : "text-left"
-                )}
+                className="truncate shrink-0 text-left"
                 style={{ flex: col.flex, padding: sizeConfig.cellPadding, fontSize: sizeConfig.fontSize }}
                 title={col.key !== "Reference" && row[col.key] != null ? String(row[col.key]) : undefined}
               >
@@ -432,8 +429,7 @@ export function DataTable() {
                 key={col.key}
                 onClick={() => toggleSort(col.key)}
                 className={cn(
-                  "flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider hover:text-primary transition-colors shrink-0 cursor-pointer",
-                  col.align === "center" ? "justify-center" : "justify-start",
+                  "flex items-center gap-1 justify-start text-[11px] font-semibold uppercase tracking-wider hover:text-primary transition-colors shrink-0 cursor-pointer",
                   isSorted ? "text-amber-600" : "text-muted"
                 )}
                 style={{ flex: col.flex, padding: "0 8px" }}
