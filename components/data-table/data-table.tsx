@@ -264,19 +264,19 @@ function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value
     }
     return <span className="text-muted/40 text-[10px]">—</span>;
   }
+  if (PRICE_COLUMNS.has(column)) {
+    const formatted = formatPrice(value as number | null);
+    return <span className="font-mono" style={{ fontSize }}>{formatted || "0,00"}</span>;
+  }
+  if (INTEGER_OUTPUT_COLUMNS.has(column)) {
+    const formatted = formatInteger(value as number | null);
+    return <span className="font-mono" style={{ fontSize }}>{formatted !== "" ? formatted : "0"}</span>;
+  }
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted/50">—</span>;
   }
   if (column === "Reference") {
     return <ReferenceCell value={String(value)} fontSize={fontSize} />;
-  }
-  if (PRICE_COLUMNS.has(column)) {
-    const formatted = formatPrice(value as number | null);
-    return formatted ? <span className="font-mono" style={{ fontSize }}>{formatted}</span> : <span className="text-muted/50">—</span>;
-  }
-  if (INTEGER_OUTPUT_COLUMNS.has(column)) {
-    const formatted = formatInteger(value as number | null);
-    return formatted !== "" ? <span className="font-mono" style={{ fontSize }}>{formatted}</span> : <span className="text-muted/50">—</span>;
   }
   if (typeof value === "number") {
     return <span className="font-mono" style={{ fontSize }}>{value}</span>;

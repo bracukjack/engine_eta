@@ -192,9 +192,9 @@ export default function ShopifyProcessorPage() {
       const obj: Record<string, unknown> = {};
       for (const key of visibleColumns) {
         if (PRICE_COLUMNS.has(key)) {
-          obj[key] = formatPrice(row[key] as number | null) || null;
+          obj[key] = formatPrice(row[key] as number | null) || 0;
         } else if (INTEGER_OUTPUT_COLUMNS.has(key)) {
-          obj[key] = formatInteger(row[key] as number | null) || null;
+          obj[key] = formatInteger(row[key] as number | null) || 0;
         } else {
           obj[key] = row[key];
         }
@@ -244,8 +244,8 @@ export default function ShopifyProcessorPage() {
       const chunkData = chunks[i].map((row) => {
         const obj: Record<string, unknown> = {};
         for (const key of visibleColumns) {
-          if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || null;
-          else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || null;
+          if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
+          else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || 0;
           else obj[key] = row[key];
         }
         return obj;
@@ -308,8 +308,8 @@ export default function ShopifyProcessorPage() {
       const chunkData = chunks[i].map((row) => {
         const obj: Record<string, unknown> = {};
         for (const key of visibleColumns) {
-          if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || null;
-          else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || null;
+          if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
+          else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || 0;
           else obj[key] = row[key];
         }
         return obj;
