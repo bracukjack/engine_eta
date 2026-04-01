@@ -3,6 +3,8 @@ export interface StockRow {
   ItemCode: string;
   ItemDescriptionDescription: string;
   ItemGroupDescriptionDescription: string;
+  Class01Description: string;
+  Class06Description: string;
   Stock: number;
   PlannedInStock: number;
   PlannedOutStock: number;
@@ -26,14 +28,16 @@ export const STOCK_COLUMNS: {
   tooltip: string;
   numeric?: boolean;
 }[] = [
-  { key: "No",                            label: "No",          flex: 0.4, tooltip: "Row number" },
-  { key: "RealStock",      label: "Real Stock",   flex: 1,   tooltip: "Real Stock = Stock − PlannedOutStock", numeric: true },
-  { key: "ItemCode",                      label: "Item Code",   flex: 1.5, tooltip: "Unique product identifier" },
-  { key: "ItemDescriptionDescription",    label: "Description", flex: 3.5, tooltip: "Product name" },
+  { key: "No",                            label: "No",          flex: 0.8, tooltip: "Row number" },
+  { key: "RealStock",      label: "Real",   flex: 1,   tooltip: "Real Stock = Stock − PlannedOutStock", numeric: true },
+  { key: "ItemCode",                      label: "Item Code",   flex: 2, tooltip: "Unique product identifier" },
+  { key: "ItemDescriptionDescription",    label: "Desc", flex: 3, tooltip: "Product name" },
   { key: "ItemGroupDescriptionDescription", label: "Category",  flex: 2,   tooltip: "Product category group" },
-  { key: "Stock",          label: "Stock",        flex: 0.8, tooltip: "Current physical stock quantity", numeric: true },
-  { key: "PlannedInStock", label: "Planned In",   flex: 0.9, tooltip: "Planned incoming stock",          numeric: true },
-  { key: "PlannedOutStock",label: "Planned Out",  flex: 0.9, tooltip: "Planned outgoing stock",          numeric: true },
+  { key: "Class01Description", label: "Class 01", flex: 1.5, tooltip: "Product sub-category (Class 01)" },
+  { key: "Class06Description", label: "Class 06", flex: 1.5, tooltip: "Product sub-category (Class 06)" },
+  { key: "Stock",          label: "Stock",        flex: 0.6, tooltip: "Current physical stock quantity", numeric: true },
+  { key: "PlannedInStock", label: "Plan In",   flex: 0.9, tooltip: "Planned incoming stock",          numeric: true },
+  { key: "PlannedOutStock",label: "Plan Out",  flex: 0.9, tooltip: "Planned outgoing stock",          numeric: true },
   { key: "AvailableStock", label: "Available",    flex: 0.9, tooltip: "System-calculated available stock", numeric: true },
 ];
 

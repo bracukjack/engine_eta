@@ -35,6 +35,7 @@ export default function ShopifyProcessorPage() {
   const startProcessing = useAppStore((s) => s.startProcessing);
   const setProgress = useAppStore((s) => s.setProgress);
   const setResults = useAppStore((s) => s.setResults);
+  const reset      = useAppStore((s) => s.reset);
   const setError = useAppStore((s) => s.setError);
 
   const statusFilter = useAppStore((s) => s.statusFilter);
@@ -406,6 +407,14 @@ export default function ShopifyProcessorPage() {
 
           {results.length > 0 && (
             <>
+              <button
+                onClick={reset}
+                className="flex items-center gap-1.5 text-[11px] text-muted hover:text-red-500 transition-colors cursor-pointer ml-1"
+              >
+                <X size={12} />
+                Reset Data
+              </button>
+              <div className="w-px h-5 bg-edge shrink-0" />
               <ColumnToggle />
               <ExportDropdown
                 onExportXlsx={handleExportXlsx}
