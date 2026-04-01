@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, Suspense, lazy } from "react";
+import { useCallback, Suspense, lazy, useTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { parseFileBuffer } from "@/lib/parsers";
 import { parseSalesRows } from "@/lib/bestSeller";
@@ -48,18 +48,24 @@ function StockAnalyzerInner() {
   const setSalesData     = useStockStore((s) => s.setSalesData);
   const clearSalesData   = useStockStore((s) => s.clearSalesData);
 
+  const [isPending, startTransition] = useTransition();
+
   // Tab navigation via URL
   const setActiveTab = useCallback((tab: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", tab);
-    params.delete("view");
-    router.replace(`?${params.toString()}`, { scroll: false });
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("tab", tab);
+      params.delete("view");
+      router.replace(`?${params.toString()}`, { scroll: false });
+    });
   }, [searchParams, router]);
 
   const setInnerView = useCallback((view: string) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("view", view);
-    router.replace(`?${params.toString()}`, { scroll: false });
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("view", view);
+      router.replace(`?${params.toString()}`, { scroll: false });
+    });
   }, [searchParams, router]);
 
   // ── File handlers ────────────────────────────────────────────────────────
@@ -87,8 +93,8 @@ function StockAnalyzerInner() {
         const code = String(r["Code"] ?? r["ItemCode"] ?? "").trim();
         if (code) {
           lookup[code] = {
-            class01: String(r["Class_01"] ?? r["Class01Description"] ?? ""),
-            class06: String(r["Class_06"] ?? r["Class06Description"] ?? ""),
+            class01: String(r["Class_01Description"] ?? r["Class_01"] ?? r["Class01Description"] ?? ""),
+            class04: String(r["Class_04Description"] ?? r["Class_04"] ?? r["Class04Description"] ?? ""),
           };
         }
       }
@@ -207,7 +213,7 @@ function StockAnalyzerInner() {
         </div>
 
         {/* Right panel */}
-        <div className="flex-1 flex flex-col min-h-0">
+        <div className={cn("flex-1 flex flex-col min-h-0 transition-opacity duration-300", isPending ? "opacity-50" : "opacity-100 animate-in fade-in slide-in-from-bottom-2 duration-500")}>
           {activeTab === "bestSeller" ? (
             <Suspense fallback={
               <div className="flex-1 flex items-center justify-center">

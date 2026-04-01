@@ -8,13 +8,13 @@ import { idbStorage } from "./idb-storage";
 
 const DEFAULT_VISIBLE: (keyof StockRow)[] = STOCK_COLUMNS.map((c) => c.key);
 
-export type ItemsLookup = Record<string, { class01: string; class06: string }>;
+export type ItemsLookup = Record<string, { class01: string; class04: string }>;
 
 function enrichRows(raw: StockRow[], lookup: ItemsLookup): StockRow[] {
   return raw.map((r) => ({
     ...r,
     Class01Description: lookup[r.ItemCode]?.class01 ?? "",
-    Class06Description: lookup[r.ItemCode]?.class06 ?? "",
+    Class04Description: lookup[r.ItemCode]?.class04 ?? "",
   }));
 }
 
@@ -38,7 +38,7 @@ interface StockState {
   search: string;
   categoryFilter: string[];
   class01Filter: string[];
-  class06Filter: string[];
+  class04Filter: string[];
   stockStatusFilter: StockStatusFilter;
 
   sortColumn: keyof StockRow | null;
@@ -65,7 +65,7 @@ interface StockState {
   setSearch: (s: string) => void;
   setCategoryFilter: (cats: string[]) => void;
   setClass01Filter: (cats: string[]) => void;
-  setClass06Filter: (cats: string[]) => void;
+  setClass04Filter: (cats: string[]) => void;
   setStockStatusFilter: (f: StockStatusFilter) => void;
 
   toggleSort: (col: keyof StockRow) => void;
@@ -100,7 +100,7 @@ export const useStockStore = create<StockState>()(
       search: "",
       categoryFilter: [],
       class01Filter: [],
-      class06Filter: [],
+      class04Filter: [],
       stockStatusFilter: "all",
 
       sortColumn: null,
@@ -135,7 +135,7 @@ export const useStockStore = create<StockState>()(
           itemsLookup: {},
           itemsFileName: null,
           class01Filter: [],
-          class06Filter: [],
+          class04Filter: [],
           rows: s.rawStockRows.length > 0 ? enrichRows(s.rawStockRows, {}) : s.rows,
         })),
 
@@ -158,7 +158,7 @@ export const useStockStore = create<StockState>()(
           search: "",
           categoryFilter: [],
           class01Filter: [],
-          class06Filter: [],
+          class04Filter: [],
           stockStatusFilter: "all",
           sortColumn: null,
           sortDirection: "asc",
@@ -175,7 +175,7 @@ export const useStockStore = create<StockState>()(
       setSearch: (search) => set({ search, currentPage: 1 }),
       setCategoryFilter: (categoryFilter) => set({ categoryFilter, currentPage: 1 }),
       setClass01Filter: (class01Filter) => set({ class01Filter, currentPage: 1 }),
-      setClass06Filter: (class06Filter) => set({ class06Filter, currentPage: 1 }),
+      setClass04Filter: (class04Filter) => set({ class04Filter, currentPage: 1 }),
       setStockStatusFilter: (stockStatusFilter) => set({ stockStatusFilter, currentPage: 1 }),
 
       toggleSort: (col) =>
@@ -200,7 +200,23 @@ export const useStockStore = create<StockState>()(
     }),
     {
       name: "stock-store",
+      version: 2,
       storage: createJSONStorage(() => idbStorage),
+      migrate: (persistedState, fromVersion) => {
+        const s = persistedState as Partial<StockState>;
+        if (fromVersion < 2 && s.visibleColumns) {
+          if (!s.visibleColumns.includes("Class04Description")) {
+            const idx = s.visibleColumns.indexOf("ItemDescriptionDescription");
+            const insertAt = idx >= 0 ? idx + 1 : s.visibleColumns.length;
+            s.visibleColumns = [
+              ...s.visibleColumns.slice(0, insertAt),
+              "Class04Description",
+              ...s.visibleColumns.slice(insertAt),
+            ];
+          }
+        }
+        return s as StockState;
+      },
       partialize: (s) => ({
         rows: s.rows,
         rawStockRows: s.rawStockRows,

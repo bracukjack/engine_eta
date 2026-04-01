@@ -40,7 +40,7 @@ export function processRows(
       ItemDescriptionDescription:      String(r["ItemDescriptionDescription"] ?? ""),
       ItemGroupDescriptionDescription: String(r["ItemGroupDescriptionDescription"] ?? ""),
       Class01Description:              "",
-      Class06Description:              "",
+      Class04Description:              "",
       Stock:                           stock,
       PlannedInStock:                  parseStockNum(r["PlannedInStock"]),
       PlannedOutStock:                 plannedOut,
@@ -238,6 +238,8 @@ export function CategoryFilter({
     </div>
   );
 }
+
+export { DataTooltip, showCopiedToast } from "@/components/ui/data-tooltip";
 
 // ── File Slot ────────────────────────────────────────────────────────────────
 export function StockFileSlot({

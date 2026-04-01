@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn, formatInteger, buildSearchMatcher } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { showCopiedToast } from "@/components/ui/data-tooltip";
 import type { CustomerRFM, SegmentLabel } from "@/lib/rfm-types";
 import { SEGMENT_META } from "@/lib/rfm-types";
 import { SEGMENT_TOOLTIPS } from "./RFMUploader";
@@ -279,7 +280,16 @@ export function CustomerTable({
             </tr>
           </thead>
 
-          <tbody>
+          <tbody
+            onDoubleClick={(e) => {
+              const td = (e.target as HTMLElement).closest("td");
+              if (!td) return;
+              const text = (td.textContent ?? "").trim();
+              if (!text) return;
+              navigator.clipboard.writeText(text);
+              showCopiedToast(e.clientX, e.clientY);
+            }}
+          >
             {paged.length === 0 ? (
               <tr>
                 <td colSpan={COLUMNS.length + 1} className="text-center py-12 text-muted text-sm">
@@ -295,8 +305,8 @@ export function CustomerTable({
                   <td className="px-3 py-2 text-[11px] text-muted/50 font-mono">
                     {rowStart + idx}
                   </td>
-                  <td className="px-3 py-2 text-[11px] font-mono text-muted">{row.code}</td>
-                  <td className="px-3 py-2 text-[12px] text-primary max-w-[200px] truncate" title={row.name}>
+                  <td className="px-3 py-2 text-[11px] font-mono text-muted truncate" data-tip={row.code}>{row.code}</td>
+                  <td className="px-3 py-2 text-[12px] text-primary max-w-[200px] truncate" data-tip={row.name}>
                     {row.name}
                   </td>
                   <td className="px-3 py-2 text-[11px] font-mono">{row.recency}d</td>

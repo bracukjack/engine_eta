@@ -8,6 +8,7 @@ import { useAppStore } from "@/lib/store";
 import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS, TABLE_SIZE_CONFIG, type OutputRow } from "@/lib/types";
 import { StatusBadge, PolicyBadge } from "@/components/status-badge/status-badge";
 import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { showCopiedToast } from "@/components/ui/data-tooltip";
 
 // ── Editable columns ──────────────────────────────────────────────────────────
 const EDITABLE_COLUMNS = new Set<keyof OutputRow>([
@@ -387,16 +388,24 @@ export function DataTable() {
           )}
         >
           <div className="flex items-center w-full" style={{ minWidth: 400 }}>
-            {activeCols.map((col) => (
-              <div
-                key={col.key}
-                className="truncate shrink-0 text-left"
-                style={{ flex: col.flex, padding: sizeConfig.cellPadding, fontSize: sizeConfig.fontSize }}
-                title={col.key !== "Reference" && row[col.key] != null ? String(row[col.key]) : undefined}
-              >
-                <EditableCell sku={row["Variant SKU"]} column={col.key} row={row} fontSize={sizeConfig.fontSize} />
-              </div>
-            ))}
+            {activeCols.map((col) => {
+              const isEditable = EDITABLE_COLUMNS.has(col.key);
+              const isRef = col.key === "Reference";
+              return (
+                <div
+                  key={col.key}
+                  className="truncate shrink-0 text-left"
+                  style={{ flex: col.flex, padding: sizeConfig.cellPadding, fontSize: sizeConfig.fontSize }}
+                  data-tip={
+                    !isEditable && !isRef && row[col.key] != null
+                      ? String(row[col.key])
+                      : undefined
+                  }
+                >
+                  <EditableCell sku={row["Variant SKU"]} column={col.key} row={row} fontSize={sizeConfig.fontSize} />
+                </div>
+              );
+            })}
           </div>
         </div>
       );
@@ -452,15 +461,26 @@ export function DataTable() {
       </div>
 
       {/* Virtualized rows */}
-      <List
-        height={listHeight}
-        width="100%"
-        itemSize={sizeConfig.rowHeight}
-        itemCount={sortedData.length}
-        overscanCount={10}
+      <div
+        onDoubleClick={(e) => {
+          const el = (e.target as HTMLElement).closest("[data-tip]");
+          if (!el) return;
+          const text = (el.getAttribute("data-tip") ?? "").trim();
+          if (!text) return;
+          navigator.clipboard.writeText(text);
+          showCopiedToast(e.clientX, e.clientY);
+        }}
       >
-        {Row}
-      </List>
+        <List
+          height={listHeight}
+          width="100%"
+          itemSize={sizeConfig.rowHeight}
+          itemCount={sortedData.length}
+          overscanCount={10}
+        >
+          {Row}
+        </List>
+      </div>
 
       {/* Row count */}
       <div className="shrink-0 h-7 flex items-center px-3 border-t border-edge bg-surface">

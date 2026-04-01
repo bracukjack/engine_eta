@@ -65,23 +65,23 @@ export interface Summary {
   b2cTotal: number;
 }
 
-export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number; align: "left" }[] = [
-  { key: "No", label: "No", flex: 0.5, align: "left" },
-  { key: "Title", label: "Title", flex: 3, align: "left" },
-  { key: "Variant SKU", label: "Variant SKU", flex: 2, align: "left" },
-  { key: "Variant Quantity", label: "Qty", flex: 1, align: "left" },
-  { key: "Status", label: "Status", flex: 1, align: "left" },
-  { key: "Published", label: "Published", flex: 1, align: "left" },
-  { key: "B2C", label: "B2C", flex: 1, align: "left" },
-  { key: "Variant Price", label: "Price", flex: 1, align: "left" },
-  { key: "Variant Compare at Price", label: "Compare Price", flex: 1.5, align: "left" },
-  { key: "ETA", label: "ETA", flex: 1.5, align: "left" },
-  { key: "Variant Inventory Policy", label: "Policy", flex: 1.5, align: "left" },
-  { key: "PlannedInStock", label: "Planned", flex: 1, align: "left" },
-  { key: "PlannedOutStock", label: "Planned Out", flex: 1, align: "left" },
-  { key: "Discount %", label: "Disc %", flex: 1, align: "left" },
-  { key: "Cost per item", label: "Cost", flex: 1, align: "left" },
-  { key: "Reference", label: "Reference", flex: 2, align: "left" },
+export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number; }[] = [
+  { key: "No", label: "No", flex: 0.5 },
+  { key: "Title", label: "Title", flex: 3 },
+  { key: "Variant SKU", label: "SKU", flex: 2 },
+  { key: "Variant Quantity", label: "Qty", flex: 1 },
+  { key: "Status", label: "Status", flex: 1, },
+  { key: "Published", label: "Published", flex: 1, },
+  { key: "B2C", label: "B2C", flex: 1, },
+  { key: "Variant Price", label: "Price", flex: 1 },
+  { key: "Variant Compare at Price", label: "Compare Price", flex: 1.5 },
+  { key: "ETA", label: "ETA", flex: 1.5 },
+  { key: "Variant Inventory Policy", label: "Policy", flex: 1.5 },
+  { key: "PlannedInStock", label: "Planned", flex: 1 },
+  // { key: "PlannedOutStock", label: "Planned Out", flex: 1 },
+  { key: "Discount %", label: "Disc %", flex: 1, },
+  { key: "Cost per item", label: "Cost", flex: 1 },
+  // { key: "Reference", label: "Reference", flex: 2 },
 ];
 
 export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useState, Suspense } from "react";
+import { useRef, useCallback, useEffect, useState, Suspense, useTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import type {
   AnalysisResults,
@@ -11,6 +11,7 @@ import type {
   RankingWeights,
 } from "@/lib/association-rules/types";
 import { DEFAULT_WORKER_FILTERS, EMPTY_FILE_SLOT } from "@/lib/association-rules/types";
+import { cn } from "@/lib/utils";
 import { parseFileBuffer } from "@/lib/parsers";
 import { FileUploadZone } from "@/components/association-rules/FileUploadZone";
 import { RuleControls } from "@/components/association-rules/RuleControls";
@@ -87,9 +88,12 @@ function AssociationRulesInner() {
   const [rankingWeights, setRankingWeights] = useState<RankingWeights>(DEFAULT_RANKING_WEIGHTS);
 
   // ── UI state ─────────────────────────────────────────────────────────────────
+  const [isPending, startTransition] = useTransition();
   const tab = (searchParams.get("tab") ?? "recommendations") as AnalysisTab;
   const setTab = useCallback((t: AnalysisTab) => {
-    router.replace(`?tab=${t}`, { scroll: false });
+    startTransition(() => {
+      router.replace(`?tab=${t}`, { scroll: false });
+    });
   }, [router]);
 
   // ── IDB persistence ──────────────────────────────────────────────────────
@@ -355,51 +359,53 @@ function AssociationRulesInner() {
           </div>
 
           {/* Tab content */}
-          {tab === "recommendations" && (
-            <RulesTable
-              rules={results?.itemRules ?? []}
-              hideOutOfStock={hideOutOfStock}
-              sortByRevenue={sortByRevenue}
-            />
-          )}
-          {tab === "categories" && (
-            <CategoryHeatmap
-              itemGroupMatrix={results?.itemGroupMatrix ?? []}
-              subCategoryMatrix={results?.subCategoryMatrix ?? []}
-              crossCategoryRules={results?.crossCategoryRules ?? []}
-            />
-          )}
-          {tab === "revenue" && (
-            <RevenueOpportunities
-              rules={results?.itemRules ?? []}
-              salespersons={results?.salespersons ?? []}
-              salespersonItems={results?.salespersonItems ?? {}}
-            />
-          )}
-          {tab === "bundles" && (
-            <BundleGrid
-              bundles={results?.bundles ?? []}
-              smartBundles={results?.smartBundles ?? []}
-            />
-          )}
-          {tab === "sequential" && (
-            <SequentialRulesTab rules={results?.sequentialRules ?? []} />
-          )}
-          {tab === "salesperson" && (
-            <SalespersonTable
-              metrics={results?.salespersonMetrics ?? []}
-              segments={results?.segments ?? []}
-            />
-          )}
-          {tab === "seasonal" && (
-            <SeasonalInsights data={results?.seasonalData ?? []} />
-          )}
-          {tab === "conflicts" && (
-            <ConflictsPanel
-              negativeRules={results?.negativeRules ?? []}
-              cannibalizationPairs={results?.cannibalizationPairs ?? []}
-            />
-          )}
+          <div className={cn("flex-1 min-h-0 flex flex-col transition-opacity duration-300", isPending ? "opacity-50" : "opacity-100 animate-in fade-in slide-in-from-bottom-2 duration-500 overflow-y-auto")}>
+            {tab === "recommendations" && (
+              <RulesTable
+                rules={results?.itemRules ?? []}
+                hideOutOfStock={hideOutOfStock}
+                sortByRevenue={sortByRevenue}
+              />
+            )}
+            {tab === "categories" && (
+              <CategoryHeatmap
+                itemGroupMatrix={results?.itemGroupMatrix ?? []}
+                subCategoryMatrix={results?.subCategoryMatrix ?? []}
+                crossCategoryRules={results?.crossCategoryRules ?? []}
+              />
+            )}
+            {tab === "revenue" && (
+              <RevenueOpportunities
+                rules={results?.itemRules ?? []}
+                salespersons={results?.salespersons ?? []}
+                salespersonItems={results?.salespersonItems ?? {}}
+              />
+            )}
+            {tab === "bundles" && (
+              <BundleGrid
+                bundles={results?.bundles ?? []}
+                smartBundles={results?.smartBundles ?? []}
+              />
+            )}
+            {tab === "sequential" && (
+              <SequentialRulesTab rules={results?.sequentialRules ?? []} />
+            )}
+            {tab === "salesperson" && (
+              <SalespersonTable
+                metrics={results?.salespersonMetrics ?? []}
+                segments={results?.segments ?? []}
+              />
+            )}
+            {tab === "seasonal" && (
+              <SeasonalInsights data={results?.seasonalData ?? []} />
+            )}
+            {tab === "conflicts" && (
+              <ConflictsPanel
+                negativeRules={results?.negativeRules ?? []}
+                cannibalizationPairs={results?.cannibalizationPairs ?? []}
+              />
+            )}
+          </div>
         </div>
       </div>
     </div>

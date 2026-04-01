@@ -16,6 +16,7 @@ import {
   RealStockBadge,
   StockColumnToggle,
   CategoryFilter,
+  showCopiedToast,
 } from "../components/shared";
 
 export default function RealStockTab() {
@@ -27,8 +28,8 @@ export default function RealStockTab() {
   const setCategoryFilter = useStockStore((s) => s.setCategoryFilter);
   const class01Filter     = useStockStore((s) => s.class01Filter);
   const setClass01Filter  = useStockStore((s) => s.setClass01Filter);
-  const class06Filter     = useStockStore((s) => s.class06Filter);
-  const setClass06Filter  = useStockStore((s) => s.setClass06Filter);
+  const class04Filter     = useStockStore((s) => s.class04Filter);
+  const setClass04Filter  = useStockStore((s) => s.setClass04Filter);
   const stockStatusFilter = useStockStore((s) => s.stockStatusFilter);
   const setStockStatusFilter = useStockStore((s) => s.setStockStatusFilter);
   const sortColumn        = useStockStore((s) => s.sortColumn);
@@ -45,7 +46,6 @@ export default function RealStockTab() {
   const currentPage       = useStockStore((s) => s.currentPage);
   const setCurrentPage    = useStockStore((s) => s.setCurrentPage);
 
-  const hasItemsData = class01Filter.length >= 0; // Derived below
 
   // Debounced search
   const [searchInput, setSearchInput] = useState(search);
@@ -70,12 +70,12 @@ export default function RealStockTab() {
     [rows]
   );
 
-  const class06Options = useMemo(
-    () => Array.from(new Set(rows.map((r) => r.Class06Description).filter(Boolean))).sort(),
+  const class04Options = useMemo(
+    () => Array.from(new Set(rows.map((r) => r.Class04Description).filter(Boolean))).sort(),
     [rows]
   );
 
-  const hasItemsDataActual = class01Options.length > 0 || class06Options.length > 0;
+  const hasItemsDataActual = class01Options.length > 0 || class04Options.length > 0;
 
   const handleCategoryFilter = useCallback(
     (cats: string[]) => { setCategoryFilter(cats); setCurrentPage(1); },
@@ -95,8 +95,8 @@ export default function RealStockTab() {
       result = result.filter((r) => categoryFilter.includes(r.ItemGroupDescriptionDescription));
     if (class01Filter.length > 0)
       result = result.filter((r) => class01Filter.includes(r.Class01Description));
-    if (class06Filter.length > 0)
-      result = result.filter((r) => class06Filter.includes(r.Class06Description));
+    if (class04Filter.length > 0)
+      result = result.filter((r) => class04Filter.includes(r.Class04Description));
     if (stockStatusFilter === "inStock") result = result.filter((r) => r.Stock > 0);
     if (stockStatusFilter === "outOfStock") result = result.filter((r) => r.Stock === 0);
     if (stockStatusFilter === "negative") result = result.filter((r) => r.RealStock < 0);
@@ -106,7 +106,7 @@ export default function RealStockTab() {
       );
     }
     return result;
-  }, [rows, categoryFilter, class01Filter, class06Filter, stockStatusFilter, search, matcher]);
+  }, [rows, categoryFilter, class01Filter, class04Filter, stockStatusFilter, search, matcher]);
 
   const sortedRows = useMemo(() => {
     if (!sortColumn) return filteredRows;
@@ -154,7 +154,7 @@ export default function RealStockTab() {
   }, [activeCols, sortedRows]);
 
   const sizeConfig = STOCK_TABLE_SIZE[tableSize];
-  const isFiltered = categoryFilter.length > 0 || class01Filter.length > 0 || class06Filter.length > 0 || stockStatusFilter !== "all" || search !== "";
+  const isFiltered = categoryFilter.length > 0 || class01Filter.length > 0 || class04Filter.length > 0 || stockStatusFilter !== "all" || search !== "";
 
   const pageNumbers = useMemo(() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -254,12 +254,12 @@ export default function RealStockTab() {
           />
         )}
 
-        {hasItemsDataActual && class06Options.length > 0 && (
+        {hasItemsDataActual && class04Options.length > 0 && (
           <CategoryFilter
-            categories={class06Options}
-            selected={class06Filter}
-            onChange={setClass06Filter}
-            label="Class 06"
+            categories={class04Options}
+            selected={class04Filter}
+            onChange={setClass04Filter}
+            label="Class 04"
           />
         )}
 
@@ -293,7 +293,7 @@ export default function RealStockTab() {
             onClick={() => {
               setCategoryFilter([]);
               setClass01Filter([]);
-              setClass06Filter([]);
+              setClass04Filter([]);
               setStockStatusFilter("all");
               setSearchInput("");
               setSearch("");
@@ -348,7 +348,16 @@ export default function RealStockTab() {
             </tr>
           </thead>
 
-          <tbody>
+          <tbody
+            onDoubleClick={(e) => {
+              const td = (e.target as HTMLElement).closest("td");
+              if (!td) return;
+              const text = (td.textContent ?? "").trim();
+              if (!text) return;
+              navigator.clipboard.writeText(text);
+              showCopiedToast(e.clientX, e.clientY);
+            }}
+          >
             {pagedRows.length === 0 ? (
               <tr>
                 <td colSpan={activeCols.length} className="text-center py-16 text-muted text-sm">
@@ -376,8 +385,10 @@ export default function RealStockTab() {
                           key={col.key}
                           className="truncate overflow-hidden"
                           style={{ padding: sizeConfig.cellPadding, fontSize: sizeConfig.fontSize }}
-                          title={
-                            col.key !== "RealStock" && value != null ? String(value) : undefined
+                          data-tip={
+                            !col.numeric && col.key !== "No" && col.key !== "RealStock" && value != null
+                              ? String(value)
+                              : undefined
                           }
                         >
                           {col.key === "No" ? (

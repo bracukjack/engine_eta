@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import type { SalespersonMetric, SegmentSummary } from "@/lib/association-rules/types";
 import { Users, Award } from "lucide-react";
+import { showCopiedToast } from "@/components/ui/data-tooltip";
 
 const SEGMENT_LABELS: Record<string, { label: string; color: string }> = {
   champion: { label: "Champion", color: "bg-emerald-100 text-emerald-700" },
@@ -61,7 +62,17 @@ export function SalespersonTable({ metrics, segments }: Props) {
       </div>
 
       {tab === "salesperson" ? (
-        <div className="flex-1 overflow-auto">
+        <div
+          className="flex-1 overflow-auto"
+          onDoubleClick={(e) => {
+            const el = (e.target as HTMLElement).closest("[data-tip]");
+            if (!el) return;
+            const text = (el.textContent ?? "").trim();
+            if (!text) return;
+            navigator.clipboard.writeText(text);
+            showCopiedToast(e.clientX, e.clientY);
+          }}
+        >
           {/* Header */}
           <div className="sticky top-0 z-10 flex items-center h-8 border-b border-edge bg-surface px-4 text-[10px] font-semibold text-muted uppercase tracking-wider">
             <div className="w-[180px] shrink-0">Name</div>
@@ -83,7 +94,7 @@ export function SalespersonTable({ metrics, segments }: Props) {
               >
                 <div className="w-[180px] shrink-0 flex items-center gap-2">
                   {i < 3 && <Award size={12} className={i === 0 ? "text-amber-500" : i === 1 ? "text-slate-400" : "text-amber-700"} />}
-                  <span className="font-medium truncate">{sp.name}</span>
+                  <span className="font-medium truncate" data-tip={sp.name}>{sp.name}</span>
                 </div>
                 <div className="w-[80px] shrink-0 text-center font-mono">{sp.totalOrders}</div>
                 <div className="w-[110px] shrink-0 text-center font-mono font-semibold">
@@ -104,7 +115,7 @@ export function SalespersonTable({ metrics, segments }: Props) {
                 </div>
                 <div className="flex-1 min-w-[200px] flex flex-wrap gap-1">
                   {sp.topItemNames.slice(0, 3).map((name, j) => (
-                    <span key={j} className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[150px]">{name}</span>
+                    <span key={j} className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[150px]" data-tip={name}>{name}</span>
                   ))}
                 </div>
               </div>

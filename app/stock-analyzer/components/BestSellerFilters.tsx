@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Filter, X, Check, Calendar } from "lucide-react";
 import type { DateRangePreset, BestSellerSortBy } from "@/lib/stock-types";
@@ -17,6 +17,9 @@ interface BestSellerFiltersProps {
   onCustomStartChange: (date: string) => void;
   onCustomEndChange: (date: string) => void;
   onCategoryChange: (cats: string[]) => void;
+  excludedItems: string[];
+  excludedItemsOptions: { code: string; name: string }[];
+  onExcludedItemsChange: (items: string[]) => void;
   onTopNChange: (n: number | "all") => void;
   onSortByChange: (s: BestSellerSortBy) => void;
   disabledTopN?: boolean;
@@ -136,6 +139,115 @@ function CategoryDropdown({
   );
 }
 
+function ExcludedItemsDropdown({
+  options,
+  selected,
+  onChange,
+}: {
+  options: { code: string; name: string }[];
+  selected: string[];
+  onChange: (items: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const panelRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  const toggle = (code: string) =>
+    onChange(selected.includes(code) ? selected.filter((c) => c !== code) : [...selected, code]);
+
+  const filtered = useMemo(() => {
+    if (!search) return options;
+    const q = search.toLowerCase();
+    return options.filter((o) => o.code.toLowerCase().includes(q) || (o.name && o.name.toLowerCase().includes(q)));
+  }, [options, search]);
+
+  return (
+    <div className="relative">
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-[12px] transition-colors cursor-pointer",
+          selected.length > 0
+            ? "border-red-400 bg-red-50 text-red-600 font-medium"
+            : "border-edge bg-white text-muted hover:text-primary hover:border-primary/30"
+        )}
+      >
+        <Filter size={12} className={selected.length > 0 ? "text-red-500" : ""} />
+        Exclude Items
+        {selected.length > 0 && (
+          <>
+            <span className="bg-red-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+              {selected.length}
+            </span>
+            <span
+              onClick={(e) => { e.stopPropagation(); onChange([]); }}
+              className="hover:bg-red-500/20 rounded p-0.5 text-red-600"
+            >
+              <X size={10} />
+            </span>
+          </>
+        )}
+      </button>
+
+      {open && (
+        <div
+          ref={panelRef}
+          className="absolute top-full left-0 mt-2 w-72 bg-white border border-edge rounded-lg shadow-xl z-[60] overflow-hidden flex flex-col"
+        >
+          <div className="p-2 border-b border-edge">
+             <input autoFocus value={search} onChange={e => setSearch(e.target.value)} placeholder="Search product..." className="w-full bg-slate-50 border border-edge outline-none rounded px-2 py-1 text-[11px]" />
+          </div>
+          <div className="max-h-60 overflow-y-auto p-1 text-[12px] flex flex-col">
+            {filtered.slice(0, 100).map((opt) => {
+              const checked = selected.includes(opt.code);
+              return (
+                <button
+                  key={opt.code}
+                  onClick={() => toggle(opt.code)}
+                  className="flex items-start gap-2 w-full px-2 py-1.5 text-left hover:bg-slate-50 transition-colors group cursor-pointer"
+                >
+                  <div
+                    className={cn(
+                      "w-4 h-4 mt-0.5 border rounded flex items-center justify-center shrink-0 transition-colors",
+                      checked ? "bg-red-500 border-red-500 text-white" : "border-edge group-hover:border-red-400 bg-white"
+                    )}
+                  >
+                    {checked && <Check size={10} strokeWidth={3} />}
+                  </div>
+                  <div className="flex-1 min-w-0 flex flex-col">
+                    <span className="text-primary truncate">{opt.name || opt.code}</span>
+                    <span className="text-[10px] text-muted font-mono">{opt.code}</span>
+                  </div>
+                </button>
+              );
+            })}
+            {filtered.length === 0 && (
+              <p className="px-3 py-4 text-center text-muted">No items found</p>
+            )}
+            {filtered.length > 100 && (
+              <p className="px-3 py-2 text-center text-[10px] text-muted font-mono bg-slate-50 shrink-0">Showing first 100 items...</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function BestSellerFilters({
   dateRange,
   customStart,
@@ -148,6 +260,9 @@ export default function BestSellerFilters({
   onCustomStartChange,
   onCustomEndChange,
   onCategoryChange,
+  excludedItems,
+  excludedItemsOptions,
+  onExcludedItemsChange,
   onTopNChange,
   onSortByChange,
   disabledTopN,
@@ -201,6 +316,17 @@ export default function BestSellerFilters({
           categories={categories}
           selected={selectedCategories}
           onChange={onCategoryChange}
+        />
+      )}
+
+      <div className="w-px h-5 bg-edge shrink-0" />
+
+      {/* Excluded Items */}
+      {excludedItemsOptions.length > 0 && (
+        <ExcludedItemsDropdown
+          options={excludedItemsOptions}
+          selected={excludedItems}
+          onChange={onExcludedItemsChange}
         />
       )}
 

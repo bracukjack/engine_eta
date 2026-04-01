@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, useCallback, Suspense, lazy } from "react";
+import { useState, useCallback, Suspense, lazy, useTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { Truck, TrendingUp, Users, Tag, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { parseFileBuffer } from "@/lib/parsers";
 import { parsePOData, parsePriceData, type PORecord, type PriceRecord } from "@/lib/po-tracker";
-import { FileUploadCard, type FileSlotState } from "./components/shared";
+import { TrackerFileSlot, type FileSlotState } from "./components/shared";
 
 const POTrackerTab = lazy(() => import("./tabs/POTrackerTab"));
 const SupplierPerformanceTab = lazy(() => import("./tabs/SupplierPerformanceTab"));
@@ -27,10 +27,14 @@ function POTrackerInner() {
   const router = useRouter();
   const activeTab = (searchParams.get("tab") ?? "po-tracker") as Tab;
 
+  const [isPending, startTransition] = useTransition();
+
   const setActiveTab = useCallback((tab: Tab) => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", tab);
-    router.replace(`?${params.toString()}`, { scroll: false });
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("tab", tab);
+      router.replace(`?${params.toString()}`, { scroll: false });
+    });
   }, [searchParams, router]);
 
   const [poData, setPoData] = useState<PORecord[] | null>(null);
@@ -108,34 +112,29 @@ function POTrackerInner() {
       )}
 
       {/* Content */}
-      <div className="flex-1 min-h-0 flex flex-col relative">
+      <div className={cn("flex-1 min-h-0 flex flex-col relative transition-opacity duration-300", isPending ? "opacity-50" : "opacity-100 animate-in fade-in slide-in-from-bottom-2 duration-500")}>
         {!isLoaded ? (
-          <div className="absolute inset-0 flex items-center justify-center p-8 overflow-y-auto">
-            <div className="w-full max-w-2xl space-y-6 m-auto">
-              <div className="text-center space-y-1">
-                <h2 className="text-sm font-semibold text-primary">Upload PO Data Files</h2>
-                <p className="text-[12px] text-muted font-mono">Upload both CSV files exported from Exact Online to begin</p>
-              </div>
-              <div className="flex gap-4">
-                <FileUploadCard
-                  title="PO Orders File"
-                  hint="PurPurchOrdersSearch — purchase orders & line items"
-                  state={poState} fileName={poFile?.name} fileSize={poFile?.size} error={poError}
-                  onFile={handlePoFile}
-                  onClear={() => { setPoData(null); setPoState("idle"); setPoFile(null); setPoError(undefined); }}
-                />
-                <FileUploadCard
-                  title="Price Log File"
-                  hint="LogPurchaseItemPricesSearch — supplier price history"
-                  state={priceState} fileName={priceFile?.name} fileSize={priceFile?.size} error={priceError}
-                  onFile={handlePriceFile}
-                  onClear={() => { setPriceData(null); setPriceState("idle"); setPriceFile(null); setPriceError(undefined); }}
-                />
-              </div>
-              <p className="text-center text-[11px] text-muted/60 font-mono">
-                Both files required · Date format DD-MM-YYYY · UTF-16 LE · Tab-separated
-              </p>
+          <div className="flex flex-col flex-1 p-5 gap-4 overflow-y-auto">
+            <h2 className="text-xs font-semibold text-primary">Upload Data</h2>
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
+              <TrackerFileSlot
+                label="PO Orders"
+                hint="PurPurchOrdersSearch CSV"
+                state={poState} fileName={poFile?.name} error={poError}
+                onDrop={handlePoFile}
+                onClear={() => { setPoData(null); setPoState("idle"); setPoFile(null); setPoError(undefined); }}
+              />
+              <TrackerFileSlot
+                label="Price Log"
+                hint="LogPurchaseItemPricesSearch CSV"
+                state={priceState} fileName={priceFile?.name} error={priceError}
+                onDrop={handlePriceFile}
+                onClear={() => { setPriceData(null); setPriceState("idle"); setPriceFile(null); setPriceError(undefined); }}
+              />
             </div>
+            <p className="text-[11px] text-muted/60 font-mono mt-2">
+              Both files required · Date format DD-MM-YYYY · UTF-16 LE · Tab-separated
+            </p>
           </div>
         ) : (
           <Suspense fallback={

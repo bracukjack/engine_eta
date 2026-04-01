@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { FixedSizeList as List } from "react-window";
 import { cn } from "@/lib/utils";
+import { showCopiedToast } from "@/components/ui/data-tooltip";
 import type { ItemRule } from "@/lib/association-rules/types";
 import { StockBadge } from "./StockBadge";
 import { ArrowUp, ArrowDown, ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
@@ -168,6 +169,7 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
               <div
                 className="px-1.5 truncate shrink-0"
                 style={{ width: 200 - 5 }}
+                data-tip={r.antecedentNames.join(", ")}
               >
                 <span className="font-mono text-[11px]">
                   {r.antecedent.join(", ")}
@@ -185,7 +187,11 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
                 <ArrowRight size={12} className="text-muted" />
               </div>
               {/* Consequent */}
-              <div className="px-1.5 truncate shrink-0" style={{ width: 200 }}>
+              <div
+                className="px-1.5 truncate shrink-0"
+                style={{ width: 200 }}
+                data-tip={r.consequentNames.join(", ")}
+              >
                 <span className="font-mono text-[11px]">
                   {r.consequent.join(", ")}
                 </span>
@@ -355,16 +361,27 @@ export function RulesTable({ rules, hideOutOfStock, sortByRevenue }: Props) {
           </p>
         </div>
       ) : (
-        <List
-          outerRef={outerRef}
-          height={listHeight - (expandedRule ? 100 : 0)}
-          width="100%"
-          itemSize={ROW_HEIGHT}
-          itemCount={sorted.length}
-          overscanCount={10}
+        <div
+          onDoubleClick={(e) => {
+            const el = (e.target as HTMLElement).closest("[data-tip]");
+            if (!el) return;
+            const text = (el.getAttribute("data-tip") ?? "").trim();
+            if (!text) return;
+            navigator.clipboard.writeText(text);
+            showCopiedToast(e.clientX, e.clientY);
+          }}
         >
-          {Row}
-        </List>
+          <List
+            outerRef={outerRef}
+            height={listHeight - (expandedRule ? 100 : 0)}
+            width="100%"
+            itemSize={ROW_HEIGHT}
+            itemCount={sorted.length}
+            overscanCount={10}
+          >
+            {Row}
+          </List>
+        </div>
       )}
 
       {/* Expanded detail panel */}

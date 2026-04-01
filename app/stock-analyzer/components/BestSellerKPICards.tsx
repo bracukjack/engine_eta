@@ -6,7 +6,7 @@ interface BestSellerKPICardsProps {
   totalSKU: number;
   totalQtySold: number;
   totalRevenue: number;
-  avgDiscount: number;
+  totalGrossProfit: number;
 }
 
 function KPICard({
@@ -34,14 +34,14 @@ export default function BestSellerKPICards({
   totalSKU,
   totalQtySold,
   totalRevenue,
-  avgDiscount,
+  totalGrossProfit,
 }: BestSellerKPICardsProps) {
   return (
     <div className="shrink-0 px-4 py-2.5 border-b border-edge bg-panel flex items-stretch gap-2 flex-wrap">
       <KPICard label="Total SKU" value={formatQty(totalSKU)} />
       <KPICard label="Total Qty Sold" value={formatQty(totalQtySold)} accent />
       <KPICard label="Total Revenue" value={formatCurrency(totalRevenue)} accent />
-      <KPICard label="Avg Discount" value={`${avgDiscount.toFixed(2)}%`} />
+      <KPICard label="Gross Profit" value={formatCurrency(totalGrossProfit)} accent />
     </div>
   );
 }

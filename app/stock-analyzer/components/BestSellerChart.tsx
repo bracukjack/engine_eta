@@ -28,7 +28,7 @@ export default function BestSellerChart({
   allCategories,
   title,
 }: BestSellerChartProps) {
-  const [metric, setMetric] = useState<"qty" | "revenue">("qty");
+  const [metric, setMetric] = useState<"qty" | "revenue" | "grossProfit">("qty");
 
   const labels = items.map((item) =>
     item.productName.length > 30 ? item.productName.slice(0, 30) + "…" : item.productName
@@ -38,10 +38,14 @@ export default function BestSellerChart({
     labels,
     datasets: [
       {
-        label: metric === "qty" ? "Total Qty" : "Total Revenue (€)",
-        data: items.map((item) => metric === "qty" ? item.totalQty : item.totalRevenue),
+        label: metric === "qty" ? "Total Qty" : metric === "revenue" ? "Total Revenue (€)" : "Gross Profit (€)",
+        data: items.map((item) =>
+          metric === "qty" ? item.totalQty : metric === "revenue" ? item.totalRevenue : item.grossProfit
+        ),
         backgroundColor: items.map((item) =>
-          getCategoryColor(item.category, allCategories)
+          metric === "grossProfit"
+            ? "rgba(34,197,94,0.75)"
+            : getCategoryColor(item.category, allCategories)
         ),
         borderRadius: 3,
         barPercentage: 0.7,
@@ -63,9 +67,9 @@ export default function BestSellerChart({
             return items[idx]?.productName ?? "";
           },
           label: (ctx: { parsed: { x: number } }) => {
-            return metric === "qty"
-              ? `Qty: ${formatQty(ctx.parsed.x)}`
-              : `Revenue: ${formatCurrency(ctx.parsed.x)}`;
+            if (metric === "qty") return `Qty: ${formatQty(ctx.parsed.x)}`;
+            if (metric === "revenue") return `Revenue: ${formatCurrency(ctx.parsed.x)}`;
+            return `Gross Profit: ${formatCurrency(ctx.parsed.x)}`;
           },
         },
       },
@@ -79,6 +83,7 @@ export default function BestSellerChart({
             metric === "qty"
               ? formatQty(Number(value))
               : `€${formatQty(Number(value))}`,
+
         },
       },
       y: {
@@ -116,6 +121,15 @@ export default function BestSellerChart({
             )}
           >
             Revenue
+          </button>
+          <button
+            onClick={() => setMetric("grossProfit")}
+            className={cn(
+              "px-2.5 py-1 text-[11px] font-mono transition-colors cursor-pointer",
+              metric === "grossProfit" ? "bg-emerald-500 text-white" : "bg-white text-muted hover:bg-surface-hover"
+            )}
+          >
+            Profit
           </button>
         </div>
       </div>
