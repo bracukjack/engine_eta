@@ -1,0 +1,364 @@
+"use client";
+
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { cn } from "@/lib/utils";
+import { formatCurrency, formatQty } from "@/lib/bestSeller";
+import { buildSearchMatcher } from "@/lib/utils";
+import type { BestSellerItem, StockStatusLabel } from "@/lib/stock-types";
+import {
+  Search, X, ArrowUp, ArrowDown, ArrowUpDown,
+  Download, ChevronLeft, ChevronRight, Filter, Check,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+
+function StockStatusBadge({ status }: { status: StockStatusLabel }) {
+  const base = "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold font-mono";
+  switch (status) {
+    case "Sold Out":
+      return <span className={`${base} bg-red-100 text-red-700`}>Sold Out</span>;
+    case "Low Stock":
+      return <span className={`${base} bg-amber-100 text-amber-700`}>Low Stock</span>;
+    case "Healthy":
+      return <span className={`${base} bg-green-100 text-green-700`}>Healthy</span>;
+    case "Overstocked":
+      return <span className={`${base} bg-blue-100 text-blue-700`}>Overstocked</span>;
+    case "N/A":
+    default:
+      return <span className={`${base} bg-slate-100 text-slate-500`}>N/A</span>;
+  }
+}
+
+type SortKey = keyof BestSellerItem;
+
+const COLUMNS: { key: SortKey; label: string; flex: number; numeric?: boolean }[] = [
+  { key: "rank", label: "Rank", flex: 0.5, numeric: true },
+  { key: "itemCode", label: "Item Code", flex: 1.5 },
+  { key: "productName", label: "Product Name", flex: 3 },
+  { key: "category", label: "Category", flex: 1.5 },
+  { key: "totalQty", label: "Total Qty", flex: 0.8, numeric: true },
+  { key: "totalRevenue", label: "Revenue", flex: 1, numeric: true },
+  { key: "orderCount", label: "Orders", flex: 0.7, numeric: true },
+  { key: "avgDiscount", label: "Disc%", flex: 0.7, numeric: true },
+  { key: "avgUnitPrice", label: "Avg Price", flex: 0.8, numeric: true },
+  { key: "currentStock", label: "Stock", flex: 0.7, numeric: true },
+  { key: "stockStatus", label: "Status", flex: 0.9 },
+];
+
+const PAGE_SIZES: (number | "all")[] = [50, 100, 200, 500, 1000, "all"];
+
+const STATUS_OPTIONS: { value: StockStatusLabel | "all"; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "Sold Out", label: "Sold Out" },
+  { value: "Low Stock", label: "Low" },
+  { value: "Healthy", label: "Healthy" },
+  { value: "Overstocked", label: "Over" },
+  { value: "N/A", label: "N/A" },
+];
+
+interface BestSellerTableProps {
+  items: BestSellerItem[];
+}
+
+export default function BestSellerTable({ items }: BestSellerTableProps) {
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
+  const [sortCol, setSortCol] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [statusFilter, setStatusFilter] = useState<StockStatusLabel | "all">("all");
+  const [rowsPerPage, setRowsPerPage] = useState<number | "all">(50);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Debounced search
+  useEffect(() => {
+    const id = setTimeout(() => setSearch(searchInput), 300);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
+  // Reset page on filter change
+  useEffect(() => { setCurrentPage(1); }, [search, statusFilter]);
+
+  const toggleSort = (col: SortKey) => {
+    if (sortCol === col) {
+      setSortDir((d) => d === "asc" ? "desc" : "asc");
+    } else {
+      setSortCol(col);
+      setSortDir("asc");
+    }
+    setCurrentPage(1);
+  };
+
+  // Filtered + sorted
+  const processed = useMemo(() => {
+    let data = [...items];
+
+    // Status filter
+    if (statusFilter !== "all") {
+      data = data.filter((i) => i.stockStatus === statusFilter);
+    }
+
+    // Search
+    const matcher = buildSearchMatcher(search);
+    if (matcher) {
+      data = data.filter((i) => matcher([i.itemCode, i.productName, i.category]));
+    }
+
+    // Sort
+    if (sortCol) {
+      const dir = sortDir === "asc" ? 1 : -1;
+      data.sort((a, b) => {
+        const av = a[sortCol];
+        const bv = b[sortCol];
+        if (av === null && bv === null) return 0;
+        if (av === null) return 1;
+        if (bv === null) return -1;
+        if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
+        return String(av).localeCompare(String(bv), undefined, { sensitivity: "base" }) * dir;
+      });
+    }
+
+    return data;
+  }, [items, statusFilter, search, sortCol, sortDir]);
+
+  // Pagination
+  const totalPages = rowsPerPage === "all"
+    ? 1
+    : Math.max(1, Math.ceil(processed.length / (rowsPerPage as number)));
+  const safePage = Math.min(currentPage, totalPages);
+
+  const pagedRows = useMemo(() => {
+    if (rowsPerPage === "all") return processed;
+    const start = (safePage - 1) * (rowsPerPage as number);
+    return processed.slice(start, start + (rowsPerPage as number));
+  }, [processed, rowsPerPage, safePage]);
+
+  // Page numbers
+  const pageNumbers = useMemo(() => {
+    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (safePage <= 4) return [1, 2, 3, 4, 5, 6, 7];
+    if (safePage >= totalPages - 3) return Array.from({ length: 7 }, (_, i) => totalPages - 6 + i);
+    return Array.from({ length: 7 }, (_, i) => safePage - 3 + i);
+  }, [totalPages, safePage]);
+
+  const totalFlex = COLUMNS.reduce((s, c) => s + c.flex, 0);
+
+  // Export CSV
+  const handleExport = useCallback(async () => {
+    const { default: Papa } = await import("papaparse");
+    const csvData = processed.map((row) => ({
+      Rank: row.rank,
+      ItemCode: row.itemCode,
+      ProductName: row.productName,
+      Category: row.category,
+      TotalQty: row.totalQty,
+      TotalRevenue: row.totalRevenue.toFixed(2),
+      OrderCount: row.orderCount,
+      AvgDiscount: row.avgDiscount.toFixed(2),
+      AvgUnitPrice: row.avgUnitPrice.toFixed(2),
+      CurrentStock: row.currentStock ?? "N/A",
+      StockStatus: row.stockStatus,
+    }));
+    const csv = Papa.unparse(csvData);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `best_sellers_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [processed]);
+
+  return (
+    <div className="mx-4 my-3 bg-white border border-edge rounded-lg shadow-sm overflow-hidden">
+      {/* Header bar */}
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-edge flex-wrap">
+        <h3 className="text-xs font-semibold text-primary">Best Seller Data</h3>
+
+        <div className="flex-1 min-w-0" />
+
+        {/* Search */}
+        <div className="relative">
+          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search code, name…"
+            className="pl-7 pr-7 h-7 text-[11px] border border-edge rounded-md bg-white focus:outline-none focus:border-accent/50 w-48"
+          />
+          {searchInput && (
+            <button
+              onClick={() => { setSearchInput(""); setSearch(""); }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted hover:text-primary cursor-pointer"
+            >
+              <X size={11} />
+            </button>
+          )}
+        </div>
+
+        {/* Stock status filter */}
+        <div className="flex items-center gap-0.5">
+          {STATUS_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setStatusFilter(opt.value)}
+              className={cn(
+                "h-6 px-2 rounded text-[10px] font-medium transition-colors cursor-pointer",
+                statusFilter === opt.value
+                  ? "bg-accent/10 text-accent border border-accent/30"
+                  : "text-muted hover:text-primary border border-transparent"
+              )}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Export */}
+        <Button variant="outline" size="sm" onClick={handleExport}>
+          <Download size={12} className="mr-1.5" />
+          Export
+        </Button>
+      </div>
+
+      {/* Table */}
+      <div className="overflow-x-auto max-h-[500px]">
+        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 900 }}>
+          <colgroup>
+            {COLUMNS.map((col) => (
+              <col key={col.key} style={{ width: `${((col.flex / totalFlex) * 100).toFixed(2)}%` }} />
+            ))}
+          </colgroup>
+          <thead className="sticky top-0 z-10 bg-surface">
+            <tr className="border-b border-edge">
+              {COLUMNS.map((col) => {
+                const isSorted = sortCol === col.key;
+                return (
+                  <th
+                    key={col.key}
+                    onClick={() => toggleSort(col.key)}
+                    className={cn(
+                      "text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group",
+                      isSorted ? "text-amber-600" : "text-muted hover:text-primary"
+                    )}
+                  >
+                    <div className="flex items-center gap-1">
+                      {col.label}
+                      {isSorted ? (
+                        sortDir === "asc"
+                          ? <ArrowUp size={10} className="text-amber-600 shrink-0" />
+                          : <ArrowDown size={10} className="text-amber-600 shrink-0" />
+                      ) : (
+                        <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-30 shrink-0" />
+                      )}
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {pagedRows.length === 0 ? (
+              <tr>
+                <td colSpan={COLUMNS.length} className="text-center py-12 text-muted text-sm">
+                  No rows match the current filters.
+                </td>
+              </tr>
+            ) : (
+              pagedRows.map((row) => (
+                <tr
+                  key={row.itemCode}
+                  className={cn(
+                    "border-b border-edge/50 transition-colors hover:bg-surface-hover",
+                    row.stockStatus === "Sold Out" && "bg-red-50/40",
+                    row.stockStatus === "Low Stock" && "bg-amber-50/30"
+                  )}
+                >
+                  <td className="px-3 py-1.5 text-[12px] font-mono text-muted/60">{row.rank}</td>
+                  <td className="px-3 py-1.5 text-[12px] font-mono truncate">{row.itemCode}</td>
+                  <td className="px-3 py-1.5 text-[12px] truncate" title={row.productName}>{row.productName}</td>
+                  <td className="px-3 py-1.5 text-[12px] truncate">{row.category || "—"}</td>
+                  <td className="px-3 py-1.5 text-[12px] font-mono">{formatQty(row.totalQty)}</td>
+                  <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrency(row.totalRevenue)}</td>
+                  <td className="px-3 py-1.5 text-[12px] font-mono">{row.orderCount}</td>
+                  <td className="px-3 py-1.5 text-[12px] font-mono">{row.avgDiscount.toFixed(2)}%</td>
+                  <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrency(row.avgUnitPrice)}</td>
+                  <td className="px-3 py-1.5 text-[12px] font-mono">
+                    {row.currentStock !== null ? formatQty(row.currentStock) : "N/A"}
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <StockStatusBadge status={row.stockStatus} />
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination bar */}
+      <div className="border-t border-edge bg-surface px-4 h-10 flex items-center gap-3">
+        <span className="text-[11px] text-muted font-mono shrink-0">
+          {processed.length === 0
+            ? "0 rows"
+            : rowsPerPage === "all"
+              ? `${processed.length} rows`
+              : `${Math.min((safePage - 1) * (rowsPerPage as number) + 1, processed.length)}–${Math.min(safePage * (rowsPerPage as number), processed.length)} of ${processed.length}`}
+        </span>
+
+        <div className="flex-1" />
+
+        {/* Rows per page */}
+        <div className="flex items-center gap-1 shrink-0">
+          <span className="text-[11px] text-muted">Rows:</span>
+          {PAGE_SIZES.map((n) => (
+            <button
+              key={String(n)}
+              onClick={() => { setRowsPerPage(n); setCurrentPage(1); }}
+              className={cn(
+                "px-2 py-0.5 rounded text-[11px] font-mono transition-colors cursor-pointer",
+                rowsPerPage === n
+                  ? "bg-accent text-white"
+                  : "text-muted hover:text-primary hover:bg-surface-hover"
+              )}
+            >
+              {n === "all" ? "All" : n}
+            </button>
+          ))}
+        </div>
+
+        {/* Page nav */}
+        {rowsPerPage !== "all" && totalPages > 1 && (
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
+              disabled={safePage === 1}
+              className="p-1 rounded text-muted hover:text-primary hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            >
+              <ChevronLeft size={14} />
+            </button>
+            {pageNumbers.map((page) => (
+              <button
+                key={page}
+                onClick={() => setCurrentPage(page)}
+                className={cn(
+                  "w-6 h-6 rounded text-[11px] font-mono transition-colors cursor-pointer",
+                  safePage === page
+                    ? "bg-accent text-white"
+                    : "text-muted hover:text-primary hover:bg-surface-hover"
+                )}
+              >
+                {page}
+              </button>
+            ))}
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
+              disabled={safePage === totalPages}
+              className="p-1 rounded text-muted hover:text-primary hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors cursor-pointer"
+            >
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}

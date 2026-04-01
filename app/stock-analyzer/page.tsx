@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect, Suspense, lazy } from "react";
 import { useDropzone } from "react-dropzone";
 import { parseFileBuffer } from "@/lib/parsers";
+import { parseSalesRows } from "@/lib/bestSeller";
 import { buildSearchMatcher, formatInteger, cn } from "@/lib/utils";
 import { StatChip } from "@/components/status-badge/status-badge";
 import { Button } from "@/components/ui/button";
@@ -14,7 +15,10 @@ import {
   Upload, Search, X, ArrowUp, ArrowDown, ArrowUpDown,
   Download, Columns3, Check, ChevronLeft, ChevronRight,
   PackageSearch, Loader2, AlertCircle, Filter, CheckCircle2,
+  TrendingUp,
 } from "lucide-react";
+
+const BestSellerTab = lazy(() => import("./tabs/BestSellerTab"));
 
 // ── EU number parser ─────────────────────────────────────────────────────────
 function parseStockNum(val: unknown): number {
@@ -330,6 +334,11 @@ export default function StockAnalyzerPage() {
   const class01Filter        = useStockStore((s) => s.class01Filter);
   const class06Filter        = useStockStore((s) => s.class06Filter);
 
+  // Best Seller state
+  const salesFileName        = useStockStore((s) => s.salesFileName);
+  const salesRowCount        = useStockStore((s) => s.salesRowCount);
+  const activeTab            = useStockStore((s) => s.activeTab);
+
   const setRows               = useStockStore((s) => s.setRows);
   const setItemsData          = useStockStore((s) => s.setItemsData);
   const clearItemsData        = useStockStore((s) => s.clearItemsData);
@@ -348,6 +357,11 @@ export default function StockAnalyzerPage() {
   const setTableSize          = useStockStore((s) => s.setTableSize);
   const setRowsPerPage        = useStockStore((s) => s.setRowsPerPage);
   const setCurrentPage        = useStockStore((s) => s.setCurrentPage);
+
+  // Best Seller actions
+  const setSalesData          = useStockStore((s) => s.setSalesData);
+  const clearSalesData        = useStockStore((s) => s.clearSalesData);
+  const setActiveTab          = useStockStore((s) => s.setActiveTab);
 
   // Debounced search
   const [searchInput, setSearchInput] = useState(search);
@@ -393,6 +407,21 @@ export default function StockAnalyzerPage() {
       }
     },
     [setItemsData]
+  );
+
+  // Sales Orders file handler
+  const handleSalesFile = useCallback(
+    async (file: File) => {
+      try {
+        const buffer = await file.arrayBuffer();
+        const raw = await parseFileBuffer(buffer) as Record<string, unknown>[];
+        const salesRows = parseSalesRows(raw);
+        setSalesData(salesRows, file.name);
+      } catch {
+        // silently ignore sales parse error
+      }
+    },
+    [setSalesData]
   );
 
   // Unique sorted categories & sub-categories
@@ -513,6 +542,7 @@ export default function StockAnalyzerPage() {
   const isLoaded    = rows.length > 0 && processingState !== "processing";
   const isFiltered  = categoryFilter.length > 0 || class01Filter.length > 0 || class06Filter.length > 0 || stockStatusFilter !== "all" || search !== "";
   const hasItemsData = class01Options.length > 0 || class06Options.length > 0;
+  const hasBothFiles = isLoaded && salesRowCount > 0;
 
   // Pagination page numbers (window of 7)
   const pageNumbers = useMemo(() => {
@@ -547,9 +577,37 @@ export default function StockAnalyzerPage() {
 
       {/* ── Feature tabs ─────────────────────────────────────────────────────── */}
       <div className="shrink-0 border-b border-edge bg-surface px-5 flex items-end gap-0">
-        <button className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium text-accent border-b-2 border-accent -mb-px">
+        <button
+          onClick={() => setActiveTab("realStock")}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium -mb-px transition-colors cursor-pointer",
+            activeTab === "realStock"
+              ? "text-accent border-b-2 border-accent"
+              : "text-muted hover:text-primary border-b-2 border-transparent"
+          )}
+        >
           <PackageSearch size={13} />
           Real Stock
+        </button>
+        <button
+          onClick={() => hasBothFiles && setActiveTab("bestSeller")}
+          disabled={!hasBothFiles}
+          className={cn(
+            "flex items-center gap-1.5 px-3 py-2 text-[12px] font-medium -mb-px transition-colors",
+            activeTab === "bestSeller"
+              ? "text-accent border-b-2 border-accent"
+              : hasBothFiles
+                ? "text-muted hover:text-primary border-b-2 border-transparent cursor-pointer"
+                : "text-muted/40 cursor-not-allowed border-b-2 border-transparent"
+          )}
+        >
+          <TrendingUp size={13} />
+          Best Seller
+          {salesRowCount > 0 && (
+            <span className="bg-accent/10 text-accent text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+              {salesRowCount}
+            </span>
+          )}
         </button>
       </div>
 
@@ -578,11 +636,27 @@ export default function StockAnalyzerPage() {
             onDrop={handleItemsFile}
             onClear={clearItemsData}
           />
+          <StockFileSlot
+            label="Sales Orders"
+            hint="salesorder.csv"
+            fileName={salesFileName}
+            isReady={!!salesFileName}
+            onDrop={handleSalesFile}
+            onClear={clearSalesData}
+          />
         </div>
 
         {/* Right panel */}
         <div className="flex-1 flex flex-col min-h-0">
-          {processingState === "processing" ? (
+          {activeTab === "bestSeller" ? (
+            <Suspense fallback={
+              <div className="flex-1 flex items-center justify-center">
+                <Loader2 size={32} className="mx-auto text-accent animate-spin" />
+              </div>
+            }>
+              <BestSellerTab />
+            </Suspense>
+          ) : processingState === "processing" ? (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center space-y-3">
                 <Loader2 size={32} className="mx-auto text-accent animate-spin" />
