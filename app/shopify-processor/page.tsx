@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useMemo, useState, Suspense } from "react";
+import { useRef, useCallback, useEffect, useMemo, useState, Suspense, useTransition } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAppStore } from "@/lib/store";
+import { cn } from "@/lib/utils";
 import type { FileKey, OutputRow } from "@/lib/types";
 import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS } from "@/lib/types";
 import { parseFileBuffer, previewFileBuffer, getXLSX } from "@/lib/parsers";
@@ -34,10 +35,14 @@ function ShopifyProcessorInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const urlTab = (searchParams.get("tab") ?? "output") as "output" | "preview";
+  const [isPending, startTransition] = useTransition();
+
   const setUrlTab = useCallback((t: "output" | "preview") => {
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("tab", t);
-    router.replace(`?${params.toString()}`, { scroll: false });
+    startTransition(() => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("tab", t);
+      router.replace(`?${params.toString()}`, { scroll: false });
+    });
   }, [searchParams, router]);
 
   const workerRef = useRef<Worker | null>(null);
@@ -559,7 +564,7 @@ function ShopifyProcessorInner() {
           <FileDropzone />
         </div>
 
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className={cn("flex-1 flex flex-col min-w-0 transition-opacity duration-300", isPending ? "opacity-50" : "opacity-100 animate-in fade-in slide-in-from-bottom-2 duration-500")}>
           <RightPanel
             isFiltered={isFiltered}
             statusFilter={statusFilter}

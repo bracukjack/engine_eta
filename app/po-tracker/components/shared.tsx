@@ -203,66 +203,81 @@ export function ItemDropdown({ value, options, onChange }: {
 
 export type FileSlotState = "idle" | "loading" | "done" | "error";
 
-export function FileUploadCard({ title, hint, state, fileName, fileSize, error, onFile, onClear }: {
-  title: string; hint: string;
-  state: FileSlotState; fileName?: string; fileSize?: number; error?: string;
-  onFile: (f: File) => void; onClear: () => void;
+export function TrackerFileSlot({
+  label,
+  hint,
+  state,
+  fileName,
+  error,
+  onDrop,
+  onClear,
+}: {
+  label: string;
+  hint: string;
+  state: FileSlotState;
+  fileName?: string | null;
+  error?: string;
+  onDrop: (file: File) => void;
+  onClear?: () => void;
 }) {
-  const { getRootProps, getInputProps } = useDropzone({
-    onDrop: (files) => { if (files[0]) onFile(files[0]); },
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop: (files) => { if (files[0]) onDrop(files[0]); },
     accept: { "text/csv": [".csv"], "text/plain": [".txt"], "application/vnd.ms-excel": [".csv"] },
     multiple: false,
   });
 
-  if (state === "loading") {
-    return (
-      <div className="flex-1 rounded-xl border border-edge bg-white p-4 flex items-center justify-center gap-2 min-h-[160px]">
-        <Loader2 size={18} className="text-accent animate-spin" />
-        <span className="text-[12px] text-muted font-mono">Parsing…</span>
-      </div>
-    );
-  }
-
-  if (state === "done" && fileName) {
-    return (
-      <div className="flex-1 rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 flex flex-col gap-3">
-        <p className="text-[11px] font-semibold text-muted uppercase tracking-wider">{title}</p>
-        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white border border-emerald-200">
-          <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
-          <span className="text-[12px] text-emerald-700 font-mono truncate flex-1">{fileName}</span>
-          {fileSize !== undefined && (
-            <span className="text-[11px] text-emerald-600/70 font-mono shrink-0">{(fileSize / 1024).toFixed(0)} KB</span>
-          )}
-          <button onClick={onClear} className="text-emerald-600 hover:text-red-500 transition-colors shrink-0">
-            <X size={13} />
-          </button>
-        </div>
-        <div {...getRootProps()} className="cursor-pointer">
-          <input {...getInputProps()} />
-          <button className="flex items-center gap-1.5 text-[11px] text-muted hover:text-accent transition-colors cursor-pointer">
-            <Upload size={11} /> Replace file
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const isReady = state === "done";
+  const isError = state === "error";
+  const isLoading = state === "loading";
 
   return (
-    <div {...getRootProps()} className="flex-1 cursor-pointer">
-      <input {...getInputProps()} />
-      <div className={cn("h-full min-h-[160px] rounded-xl border-2 border-dashed p-6 flex flex-col items-center justify-center text-center gap-3 transition-colors",
-        state === "error" ? "border-red-200 bg-red-50/50" : "border-edge bg-white hover:border-accent hover:bg-slate-50")}>
-        <div className={cn("p-3 rounded-full", state === "error" ? "bg-red-100 text-red-600" : "bg-slate-100 text-muted")}>
-          {state === "error" ? <AlertCircle size={20} /> : <Upload size={20} />}
-        </div>
-        <div>
-          <p className={cn("text-sm font-semibold", state === "error" ? "text-red-700" : "text-primary")}>
-            {state === "error" ? "Upload failed" : title}
+    <div
+      {...getRootProps()}
+      className={cn(
+        "relative border rounded-md p-3 cursor-pointer transition-all duration-200",
+        isDragActive && "border-accent bg-blue-50 scale-[1.02]",
+        isLoading && "border-edge bg-slate-50 opacity-70 cursor-wait",
+        isReady && !isLoading && "border-emerald-300 bg-emerald-50",
+        isError && "border-red-300 bg-red-50",
+        !isReady && !isError && !isLoading && !isDragActive && "border-edge hover:border-muted bg-white"
+      )}
+    >
+      <input {...getInputProps()} disabled={isLoading} />
+      <div className="flex items-center gap-2.5">
+        {isLoading ? (
+          <Loader2 size={14} className="text-accent animate-spin shrink-0" />
+        ) : isReady ? (
+          <CheckCircle2 size={14} className="text-emerald-600 shrink-0" />
+        ) : isError ? (
+          <AlertCircle size={14} className="text-red-500 shrink-0" />
+        ) : (
+          <Upload
+            size={14}
+            className={cn("shrink-0 transition-colors", isDragActive ? "text-accent" : "text-muted")}
+          />
+        )}
+        <div className="flex-1 min-w-0 text-left">
+          <p className={cn("text-xs font-medium truncate", isError ? "text-red-700" : "text-primary")}>
+            {label}
           </p>
-          <p className={cn("text-[11px] font-mono mt-1", state === "error" ? "text-red-500 break-all max-w-[200px]" : "text-muted")}>
-            {state === "error" ? error : hint}
-          </p>
+          {isLoading ? (
+            <p className="text-[11px] text-muted font-mono truncate">Parsing file...</p>
+          ) : isReady ? (
+            <p className="text-[11px] text-emerald-600 font-mono truncate">{fileName}</p>
+          ) : isError ? (
+            <p className="text-[11px] text-red-600 font-mono truncate">{error}</p>
+          ) : (
+            <p className="text-[11px] text-muted font-mono truncate">{hint}</p>
+          )}
         </div>
+        {isReady && onClear && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onClear(); }}
+            className="p-0.5 rounded text-muted hover:text-red-500 transition-colors shrink-0"
+          >
+            <X size={12} />
+          </button>
+        )}
       </div>
     </div>
   );
