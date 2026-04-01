@@ -53,6 +53,18 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
   const [categoryFilter, setCategoryFilter] = useState<string[]>([]);
   const [topN, setTopN] = useState<number | "all">(10);
   const [sortBy, setSortBy] = useState<BestSellerSortBy>("totalQty");
+  const [excludedItems, setExcludedItems] = useState<string[]>([]);
+
+  // Deriving excluded item options
+  const excludedItemsOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of salesData) {
+      if (!map.has(r.Item)) map.set(r.Item, r.ItemDescription || r.Item);
+    }
+    return Array.from(map.entries())
+      .map(([code, name]) => ({ code, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [salesData]);
 
   // Date range detection
   const dateRangeBounds = useMemo(() => getDateRange(salesData), [salesData]);
@@ -78,8 +90,9 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
         categories: categoryFilter,
         topN,
         sortBy,
+        excludedItems,
       }),
-    [salesData, stockRows, dateFilter, categoryFilter, topN, sortBy]
+    [salesData, stockRows, dateFilter, categoryFilter, topN, sortBy, excludedItems]
   );
 
   // Full results without topN limit (for the data table)
@@ -91,14 +104,15 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
         categories: categoryFilter,
         topN: "all",
         sortBy,
+        excludedItems,
       }),
-    [salesData, stockRows, dateFilter, categoryFilter, sortBy]
+    [salesData, stockRows, dateFilter, categoryFilter, sortBy, excludedItems]
   );
 
   // Weekly breakdown
   const weeklyData = useMemo(
-    () => computeWeeklyBreakdown(salesData, dateFilter.start, dateFilter.end),
-    [salesData, dateFilter]
+    () => computeWeeklyBreakdown(salesData, dateFilter.start, dateFilter.end, excludedItems),
+    [salesData, dateFilter, excludedItems]
   );
 
   // KPI computations
@@ -108,10 +122,7 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
       totalSKU: items.length,
       totalQtySold: items.reduce((s, i) => s + i.totalQty, 0),
       totalRevenue: items.reduce((s, i) => s + i.totalRevenue, 0),
-      avgDiscount:
-        items.length > 0
-          ? items.reduce((s, i) => s + i.avgDiscount, 0) / items.length
-          : 0,
+      totalGrossProfit: items.reduce((s, i) => s + i.grossProfit, 0),
     };
   }, [allBestSellers]);
 
@@ -166,6 +177,9 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
         onCustomStartChange={setCustomStart}
         onCustomEndChange={setCustomEnd}
         onCategoryChange={setCategoryFilter}
+        excludedItems={excludedItems}
+        excludedItemsOptions={excludedItemsOptions}
+        onExcludedItemsChange={setExcludedItems}
         onTopNChange={setTopN}
         onSortByChange={setSortBy}
         disabledTopN={activeView === "dataTable" || activeView === "weekly"}
@@ -199,7 +213,7 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
               totalSKU={kpi.totalSKU}
               totalQtySold={kpi.totalQtySold}
               totalRevenue={kpi.totalRevenue}
-              avgDiscount={kpi.avgDiscount}
+              totalGrossProfit={kpi.totalGrossProfit}
             />
             <BestSellerChart
               items={bestSellers}

@@ -93,8 +93,8 @@ function StockAnalyzerInner() {
         const code = String(r["Code"] ?? r["ItemCode"] ?? "").trim();
         if (code) {
           lookup[code] = {
-            class01: String(r["Class_01"] ?? r["Class01Description"] ?? ""),
-            class06: String(r["Class_06"] ?? r["Class06Description"] ?? ""),
+            class01: String(r["Class_01Description"] ?? r["Class_01"] ?? r["Class01Description"] ?? ""),
+            class04: String(r["Class_04Description"] ?? r["Class_04"] ?? r["Class04Description"] ?? ""),
           };
         }
       }

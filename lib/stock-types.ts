@@ -4,7 +4,7 @@ export interface StockRow {
   ItemDescriptionDescription: string;
   ItemGroupDescriptionDescription: string;
   Class01Description: string;
-  Class06Description: string;
+  Class04Description: string;
   Stock: number;
   PlannedInStock: number;
   PlannedOutStock: number;
@@ -47,7 +47,7 @@ export interface BestSellerItem {
   totalQty: number;
   totalRevenue: number;
   orderCount: number;
-  avgDiscount: number;
+  grossProfit: number;
   avgUnitPrice: number;
   currentStock: number | null;
   plannedIn: number | null;
@@ -60,6 +60,7 @@ export interface WeeklyDataPoint {
   weekStart: Date;
   totalQty: number;
   totalRevenue: number;
+  grossProfit: number;
 }
 
 export type DateRangePreset = "all" | "1w" | "1m" | "3m" | "6m" | "1y" | "custom";
@@ -72,13 +73,13 @@ export const STOCK_COLUMNS: {
   tooltip: string;
   numeric?: boolean;
 }[] = [
-  { key: "No",                            label: "No",          flex: 0.8, tooltip: "Row number" },
-  { key: "RealStock",      label: "Real",   flex: 1,   tooltip: "Real Stock = Stock − PlannedOutStock", numeric: true },
+  { key: "No",                            label: "No",          flex: 0.6, tooltip: "Row number" },
+  { key: "RealStock",      label: "Real",   flex: 0.8,   tooltip: "Real Stock = Stock − PlannedOutStock", numeric: true },
   { key: "ItemCode",                      label: "Item Code",   flex: 2, tooltip: "Unique product identifier" },
   { key: "ItemDescriptionDescription",    label: "Desc", flex: 3, tooltip: "Product name" },
-  { key: "ItemGroupDescriptionDescription", label: "Category",  flex: 2,   tooltip: "Product category group" },
-  { key: "Class01Description", label: "Class 01", flex: 1.5, tooltip: "Product sub-category (Class 01)" },
-  { key: "Class06Description", label: "Class 06", flex: 1.5, tooltip: "Product sub-category (Class 06)" },
+  { key: "Class04Description", label: "Class 04", flex: 2, tooltip: "Product sub-category (Class 04)" },
+  { key: "ItemGroupDescriptionDescription", label: "Category",  flex: 1.8,   tooltip: "Product category group" },
+  { key: "Class01Description", label: "Class 01", flex: 1.4, tooltip: "Product sub-category (Class 01)" },
   { key: "Stock",          label: "Stock",        flex: 0.6, tooltip: "Current physical stock quantity", numeric: true },
   { key: "PlannedInStock", label: "Plan In",   flex: 0.9, tooltip: "Planned incoming stock",          numeric: true },
   { key: "PlannedOutStock",label: "Plan Out",  flex: 0.9, tooltip: "Planned outgoing stock",          numeric: true },

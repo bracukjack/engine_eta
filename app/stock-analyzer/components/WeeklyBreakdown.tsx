@@ -48,15 +48,27 @@ export default function WeeklyBreakdown({ data, defaultOpen = false }: WeeklyBre
         pointHoverRadius: 5,
       },
       {
-        label: "Total Revenue (€)",
+        label: "Revenue (€)",
         data: data.map((d) => d.totalRevenue),
         borderColor: "#059669",
-        backgroundColor: "rgba(5, 150, 105, 0.1)",
+        backgroundColor: "rgba(5, 150, 105, 0.08)",
         fill: true,
         tension: 0.3,
         yAxisID: "y1",
         pointRadius: 3,
         pointHoverRadius: 5,
+      },
+      {
+        label: "Gross Profit (€)",
+        data: data.map((d) => d.grossProfit),
+        borderColor: "#d97706",
+        backgroundColor: "rgba(217, 119, 6, 0.08)",
+        fill: true,
+        tension: 0.3,
+        yAxisID: "y1",
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        borderDash: [4, 3],
       },
     ],
   };
@@ -82,7 +94,7 @@ export default function WeeklyBreakdown({ data, defaultOpen = false }: WeeklyBre
           label: (ctx: { dataset: { label?: string }; parsed: { y: number | null } }) => {
             const label = ctx.dataset.label ?? "";
             const val = ctx.parsed.y ?? 0;
-            if (label.includes("Revenue")) {
+            if (label.includes("Revenue") || label.includes("Profit")) {
               return `${label}: ${formatCurrency(val)}`;
             }
             return `${label}: ${formatQty(val)}`;

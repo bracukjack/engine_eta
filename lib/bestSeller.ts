@@ -146,6 +146,7 @@ export function aggregateBestSellers(
     categories: string[];
     topN: number | "all";
     sortBy: BestSellerSortBy;
+    excludedItems?: string[];
   }
 ): BestSellerItem[] {
   // Build stock lookup
@@ -181,12 +182,15 @@ export function aggregateBestSellers(
     productName: string;
     totalQty: number;
     totalRevenue: number;
+    totalGrossProfit: number;
     orderNumbers: Set<string>;
-    discounts: number[];
     unitPrices: number[];
   }>();
 
   for (const row of filtered) {
+    if (filters.excludedItems && filters.excludedItems.includes(row.Item)) {
+      continue;
+    }
     let agg = aggMap.get(row.Item);
     if (!agg) {
       agg = {
@@ -194,16 +198,16 @@ export function aggregateBestSellers(
         productName: row.ItemDescription,
         totalQty: 0,
         totalRevenue: 0,
+        totalGrossProfit: 0,
         orderNumbers: new Set(),
-        discounts: [],
         unitPrices: [],
       };
       aggMap.set(row.Item, agg);
     }
     agg.totalQty += row.Quantity;
     agg.totalRevenue += row.NetPrice;
+    agg.totalGrossProfit += (row.NetPrice - (row.CostPriceFC * row.Quantity));
     agg.orderNumbers.add(row.OrderNumber);
-    agg.discounts.push(row.Discount);
     agg.unitPrices.push(row.UnitPrice);
     // Update product name if better
     if (!agg.productName && row.ItemDescription) {
@@ -225,10 +229,8 @@ export function aggregateBestSellers(
       category,
       totalQty: agg.totalQty,
       totalRevenue: agg.totalRevenue,
+      grossProfit: agg.totalGrossProfit,
       orderCount: agg.orderNumbers.size,
-      avgDiscount: agg.discounts.length > 0
-        ? agg.discounts.reduce((s, v) => s + v, 0) / agg.discounts.length
-        : 0,
       avgUnitPrice: agg.unitPrices.length > 0
         ? agg.unitPrices.reduce((s, v) => s + v, 0) / agg.unitPrices.length
         : 0,
@@ -296,7 +298,8 @@ function formatWeekLabel(weekStart: Date): string {
 export function computeWeeklyBreakdown(
   sales: SalesRow[],
   dateStart: Date | null,
-  dateEnd: Date | null
+  dateEnd: Date | null,
+  excludedItems?: string[]
 ): WeeklyDataPoint[] {
   let filtered = sales;
   if (dateStart) {
@@ -310,18 +313,22 @@ export function computeWeeklyBreakdown(
     filtered = filtered.filter((r) => new Date(r.OrderDateParsed).getTime() <= endT);
   }
 
-  const weekMap = new Map<string, { weekStart: Date; totalQty: number; totalRevenue: number }>();
+  const weekMap = new Map<string, { weekStart: Date; totalQty: number; totalRevenue: number; grossProfit: number }>();
 
   for (const row of filtered) {
+    if (excludedItems && excludedItems.includes(row.Item)) {
+      continue;
+    }
     const ws = getWeekStart(new Date(row.OrderDateParsed));
     const key = ws.toISOString().slice(0, 10);
     let entry = weekMap.get(key);
     if (!entry) {
-      entry = { weekStart: ws, totalQty: 0, totalRevenue: 0 };
+      entry = { weekStart: ws, totalQty: 0, totalRevenue: 0, grossProfit: 0 };
       weekMap.set(key, entry);
     }
     entry.totalQty += row.Quantity;
     entry.totalRevenue += row.NetPrice;
+    entry.grossProfit += (row.NetPrice - (row.CostPriceFC * row.Quantity));
   }
 
   const weeks = Array.from(weekMap.values()).sort(
@@ -333,6 +340,7 @@ export function computeWeeklyBreakdown(
     weekStart: w.weekStart,
     totalQty: w.totalQty,
     totalRevenue: w.totalRevenue,
+    grossProfit: w.grossProfit,
   }));
 }
 

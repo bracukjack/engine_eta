@@ -3,6 +3,14 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatQty } from "@/lib/bestSeller";
+import { DataTooltip, showCopiedToast } from "./shared";
+
+function formatCurrencyInt(value: number): string {
+  const abs = Math.round(Math.abs(value));
+  const sign = value < 0 ? "-" : "";
+  const formatted = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return `€${sign}${formatted}`;
+}
 import { buildSearchMatcher } from "@/lib/utils";
 import type { BestSellerItem, StockStatusLabel } from "@/lib/stock-types";
 import {
@@ -37,6 +45,7 @@ const COLUMNS: { key: SortKey; label: string; flex: number; numeric?: boolean }[
   { key: "category", label: "Category", flex: 1.5 },
   { key: "totalQty", label: "Total Qty", flex: 0.8, numeric: true },
   { key: "totalRevenue", label: "Revenue", flex: 1, numeric: true },
+  { key: "grossProfit", label: "Gross Profit", flex: 1, numeric: true },
   { key: "orderCount", label: "Orders", flex: 0.7, numeric: true },
   { key: "currentStock", label: "Stock", flex: 0.7, numeric: true },
   { key: "stockStatus", label: "Status", flex: 0.9 },
@@ -186,6 +195,7 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
 
   return (
     <div className="mx-4 my-3 bg-white border border-edge rounded-lg shadow-sm overflow-hidden flex flex-col min-h-0 relative z-0">
+      <DataTooltip />
       {/* Header bar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-edge flex-wrap shrink-0 relative z-20">
         <h3 className="text-xs font-semibold text-primary">Best Seller Data</h3>
@@ -312,7 +322,16 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
               })}
             </tr>
           </thead>
-          <tbody>
+          <tbody
+            onDoubleClick={(e) => {
+              const td = (e.target as HTMLElement).closest("td");
+              if (!td) return;
+              const text = (td.textContent ?? "").trim();
+              if (!text) return;
+              navigator.clipboard.writeText(text);
+              showCopiedToast(e.clientX, e.clientY);
+            }}
+          >
             {pagedRows.length === 0 ? (
               <tr>
                 <td colSpan={activeCols.length} className="text-center py-12 text-muted text-sm">
@@ -330,11 +349,12 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
                   )}
                 >
                   {visibleCols.includes("rank") && <td className="px-3 py-1.5 text-[12px] font-mono text-muted/60">{row.rank}</td>}
-                  {visibleCols.includes("itemCode") && <td className="px-3 py-1.5 text-[12px] font-mono truncate">{row.itemCode}</td>}
-                  {visibleCols.includes("productName") && <td className="px-3 py-1.5 text-[12px] truncate" title={row.productName}>{row.productName}</td>}
-                  {visibleCols.includes("category") && <td className="px-3 py-1.5 text-[12px] truncate">{row.category || "—"}</td>}
+                  {visibleCols.includes("itemCode") && <td className="px-3 py-1.5 text-[12px] font-mono truncate" data-tip={row.itemCode}>{row.itemCode}</td>}
+                  {visibleCols.includes("productName") && <td className="px-3 py-1.5 text-[12px] truncate" data-tip={row.productName}>{row.productName}</td>}
+                  {visibleCols.includes("category") && <td className="px-3 py-1.5 text-[12px] truncate" data-tip={row.category || undefined}>{row.category || "—"}</td>}
                   {visibleCols.includes("totalQty") && <td className="px-3 py-1.5 text-[12px] font-mono">{formatQty(row.totalQty)}</td>}
-                  {visibleCols.includes("totalRevenue") && <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrency(row.totalRevenue)}</td>}
+                  {visibleCols.includes("totalRevenue") && <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrencyInt(row.totalRevenue)}</td>}
+                  {visibleCols.includes("grossProfit") && <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrencyInt(row.grossProfit)}</td>}
                   {visibleCols.includes("orderCount") && <td className="px-3 py-1.5 text-[12px] font-mono">{row.orderCount}</td>}
                   {visibleCols.includes("currentStock") && (
                     <td className="px-3 py-1.5 text-[12px] font-mono">
