@@ -31,7 +31,7 @@ export interface SalesRow {
   Discount: number;
   CostPriceFC: number;
   OrderDate: string;       // raw DD-MM-YYYY string
-  OrderDateParsed: Date;   // parsed Date for filtering
+  OrderDateParsed: string; // ISO string for filtering and storage
   OrderNumber: string;
   OrderedByCode: string;
   OrderedByDescription: string;
@@ -62,7 +62,7 @@ export interface WeeklyDataPoint {
   totalRevenue: number;
 }
 
-export type DateRangePreset = "all" | "1w" | "1m" | "2m" | "3m" | "6m" | "custom";
+export type DateRangePreset = "all" | "1w" | "1m" | "3m" | "6m" | "1y" | "custom";
 export type BestSellerSortBy = "totalQty" | "totalRevenue" | "orderCount";
 
 export const STOCK_COLUMNS: {

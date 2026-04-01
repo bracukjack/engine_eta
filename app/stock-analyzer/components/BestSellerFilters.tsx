@@ -19,15 +19,17 @@ interface BestSellerFiltersProps {
   onCategoryChange: (cats: string[]) => void;
   onTopNChange: (n: number | "all") => void;
   onSortByChange: (s: BestSellerSortBy) => void;
+  disabledTopN?: boolean;
+  disabledSortBy?: boolean;
 }
 
 const DATE_PRESETS: { value: DateRangePreset; label: string }[] = [
   { value: "all", label: "All" },
   { value: "1w", label: "1W" },
   { value: "1m", label: "1M" },
-  { value: "2m", label: "2M" },
   { value: "3m", label: "3M" },
   { value: "6m", label: "6M" },
+  { value: "1y", label: "1Y" },
   { value: "custom", label: "Custom" },
 ];
 
@@ -35,7 +37,8 @@ const TOP_N_OPTIONS: { value: number | "all"; label: string }[] = [
   { value: 10, label: "Top 10" },
   { value: 20, label: "Top 20" },
   { value: 30, label: "Top 30" },
-  { value: "all", label: "All" },
+  { value: 50, label: "Top 50" },
+  { value: 100, label: "Top 100" },
 ];
 
 const SORT_OPTIONS: { value: BestSellerSortBy; label: string }[] = [
@@ -147,6 +150,8 @@ export default function BestSellerFilters({
   onCategoryChange,
   onTopNChange,
   onSortByChange,
+  disabledTopN,
+  disabledSortBy,
 }: BestSellerFiltersProps) {
   return (
     <div className="shrink-0 px-4 py-2 border-b border-edge bg-surface flex items-center gap-2 flex-wrap">
@@ -202,7 +207,7 @@ export default function BestSellerFilters({
       <div className="w-px h-5 bg-edge shrink-0" />
 
       {/* Top N */}
-      <div className="flex items-center gap-0.5">
+      <div className={cn("flex items-center gap-0.5", disabledTopN && "opacity-40 pointer-events-none")}>
         {TOP_N_OPTIONS.map((opt) => (
           <button
             key={String(opt.value)}
@@ -222,7 +227,7 @@ export default function BestSellerFilters({
       <div className="w-px h-5 bg-edge shrink-0" />
 
       {/* Sort by */}
-      <div className="flex items-center gap-0.5">
+      <div className={cn("flex items-center gap-0.5", disabledSortBy && "opacity-40 pointer-events-none")}>
         <span className="text-[11px] text-muted mr-1">Sort:</span>
         {SORT_OPTIONS.map((opt) => (
           <button

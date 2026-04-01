@@ -16,12 +16,35 @@ import BestSellerChart from "../components/BestSellerChart";
 import SKUCompareTable from "../components/SKUCompareTable";
 import BestSellerTable from "../components/BestSellerTable";
 import WeeklyBreakdown from "../components/WeeklyBreakdown";
-import { Upload } from "lucide-react";
+import { Upload, BarChart3, TableProperties, CalendarDays, GitCompareArrows } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export default function BestSellerTab() {
+type InnerTab = "overview" | "skuCompare" | "dataTable" | "weekly";
+
+const INNER_TABS: { key: InnerTab; label: string; icon: React.ElementType }[] = [
+  { key: "overview",   label: "Overview",    icon: BarChart3 },
+  { key: "skuCompare", label: "SKU Compare", icon: GitCompareArrows },
+  { key: "dataTable",  label: "Data Table",  icon: TableProperties },
+  { key: "weekly",     label: "Weekly",       icon: CalendarDays },
+];
+
+interface BestSellerTabProps {
+  innerView?: string;
+  onInnerViewChange?: (view: string) => void;
+}
+
+export default function BestSellerTab({ innerView, onInnerViewChange }: BestSellerTabProps) {
   const salesData = useStockStore((s) => s.salesData);
   const stockRows = useStockStore((s) => s.rows);
   const hasStockData = stockRows.length > 0;
+
+  // Inner tab — use prop if provided (for URL routing), else local state
+  const [localView, setLocalView] = useState<InnerTab>("overview");
+  const activeView = (innerView as InnerTab) || localView;
+  const setActiveView = (v: InnerTab) => {
+    if (onInnerViewChange) onInnerViewChange(v);
+    else setLocalView(v);
+  };
 
   // Local filter state
   const [dateRange, setDateRange] = useState<DateRangePreset>("all");
@@ -129,8 +152,8 @@ export default function BestSellerTab() {
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
-      {/* Filters */}
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Filters — shared across all inner tabs */}
       <BestSellerFilters
         dateRange={dateRange}
         customStart={customStart}
@@ -145,37 +168,65 @@ export default function BestSellerTab() {
         onCategoryChange={setCategoryFilter}
         onTopNChange={setTopN}
         onSortByChange={setSortBy}
+        disabledTopN={activeView === "dataTable" || activeView === "weekly"}
+        disabledSortBy={activeView === "dataTable" || activeView === "weekly"}
       />
 
-      {/* KPI Cards */}
-      <BestSellerKPICards
-        totalSKU={kpi.totalSKU}
-        totalQtySold={kpi.totalQtySold}
-        totalRevenue={kpi.totalRevenue}
-        avgDiscount={kpi.avgDiscount}
-      />
+      {/* Inner tab bar */}
+      <div className="shrink-0 border-b border-edge bg-surface/50 px-4 flex items-end gap-0">
+        {INNER_TABS.map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setActiveView(key)}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-medium transition-colors cursor-pointer border-b-2 -mb-px",
+              activeView === key
+                ? "text-accent border-accent"
+                : "text-muted border-transparent hover:text-primary"
+            )}
+          >
+            <Icon size={12} />
+            {label}
+          </button>
+        ))}
+      </div>
 
-      {/* Chart */}
-      <BestSellerChart
-        items={bestSellers}
-        allCategories={categories}
-        title={chartTitle}
-      />
+      {/* Inner tab content — scrollable */}
+      <div className="flex-1 overflow-y-auto min-h-0">
+        {activeView === "overview" && (
+          <>
+            <BestSellerKPICards
+              totalSKU={kpi.totalSKU}
+              totalQtySold={kpi.totalQtySold}
+              totalRevenue={kpi.totalRevenue}
+              avgDiscount={kpi.avgDiscount}
+            />
+            <BestSellerChart
+              items={bestSellers}
+              allCategories={categories}
+              title={chartTitle}
+            />
+          </>
+        )}
 
-      {/* SKU Compare */}
-      <SKUCompareTable
-        items={bestSellers}
-        hasStockData={hasStockData}
-      />
+        {activeView === "skuCompare" && (
+          <SKUCompareTable
+            items={bestSellers}
+            hasStockData={hasStockData}
+          />
+        )}
 
-      {/* Data Table */}
-      <BestSellerTable items={allBestSellers} />
+        {activeView === "dataTable" && (
+          <BestSellerTable items={allBestSellers} />
+        )}
 
-      {/* Weekly Breakdown */}
-      <WeeklyBreakdown data={weeklyData} />
+        {activeView === "weekly" && (
+          <WeeklyBreakdown data={weeklyData} defaultOpen />
+        )}
 
-      {/* Bottom spacer */}
-      <div className="h-4 shrink-0" />
+        {/* Bottom spacer */}
+        <div className="h-4 shrink-0" />
+      </div>
     </div>
   );
 }

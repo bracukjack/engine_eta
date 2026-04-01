@@ -7,7 +7,7 @@ import { buildSearchMatcher } from "@/lib/utils";
 import type { BestSellerItem, StockStatusLabel } from "@/lib/stock-types";
 import {
   Search, X, ArrowUp, ArrowDown, ArrowUpDown,
-  Download, ChevronLeft, ChevronRight, Filter, Check,
+  Download, ChevronLeft, ChevronRight, Filter, Check, Columns3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -38,8 +38,6 @@ const COLUMNS: { key: SortKey; label: string; flex: number; numeric?: boolean }[
   { key: "totalQty", label: "Total Qty", flex: 0.8, numeric: true },
   { key: "totalRevenue", label: "Revenue", flex: 1, numeric: true },
   { key: "orderCount", label: "Orders", flex: 0.7, numeric: true },
-  { key: "avgDiscount", label: "Disc%", flex: 0.7, numeric: true },
-  { key: "avgUnitPrice", label: "Avg Price", flex: 0.8, numeric: true },
   { key: "currentStock", label: "Stock", flex: 0.7, numeric: true },
   { key: "stockStatus", label: "Status", flex: 0.9 },
 ];
@@ -67,6 +65,25 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
   const [statusFilter, setStatusFilter] = useState<StockStatusLabel | "all">("all");
   const [rowsPerPage, setRowsPerPage] = useState<number | "all">(50);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Column toggle state
+  const [visibleCols, setVisibleCols] = useState<SortKey[]>(COLUMNS.map((c) => c.key));
+  const [colMenuOpen, setColMenuOpen] = useState(false);
+  const colMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!colMenuOpen) return;
+    const h = (e: MouseEvent) => {
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) {
+        setColMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [colMenuOpen]);
+
+  const toggleCol = (k: SortKey) => setVisibleCols((prev) => prev.includes(k) ? prev.filter((x) => x !== k) : [...prev, k]);
+  const activeCols = useMemo(() => COLUMNS.filter((c) => visibleCols.includes(c.key)), [visibleCols]);
 
   // Debounced search
   useEffect(() => {
@@ -139,24 +156,24 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
     return Array.from({ length: 7 }, (_, i) => safePage - 3 + i);
   }, [totalPages, safePage]);
 
-  const totalFlex = COLUMNS.reduce((s, c) => s + c.flex, 0);
+  const totalFlex = activeCols.reduce((s, c) => s + c.flex, 0);
 
   // Export CSV
   const handleExport = useCallback(async () => {
     const { default: Papa } = await import("papaparse");
-    const csvData = processed.map((row) => ({
-      Rank: row.rank,
-      ItemCode: row.itemCode,
-      ProductName: row.productName,
-      Category: row.category,
-      TotalQty: row.totalQty,
-      TotalRevenue: row.totalRevenue.toFixed(2),
-      OrderCount: row.orderCount,
-      AvgDiscount: row.avgDiscount.toFixed(2),
-      AvgUnitPrice: row.avgUnitPrice.toFixed(2),
-      CurrentStock: row.currentStock ?? "N/A",
-      StockStatus: row.stockStatus,
-    }));
+    const csvData = processed.map((row) => {
+      const exportRow: Record<string, string | number> = {};
+      if (visibleCols.includes("rank")) exportRow.Rank = row.rank;
+      if (visibleCols.includes("itemCode")) exportRow.ItemCode = row.itemCode;
+      if (visibleCols.includes("productName")) exportRow.ProductName = row.productName;
+      if (visibleCols.includes("category")) exportRow.Category = row.category;
+      if (visibleCols.includes("totalQty")) exportRow.TotalQty = row.totalQty;
+      if (visibleCols.includes("totalRevenue")) exportRow.TotalRevenue = row.totalRevenue.toFixed(2);
+      if (visibleCols.includes("orderCount")) exportRow.OrderCount = row.orderCount;
+      if (visibleCols.includes("currentStock")) exportRow.CurrentStock = row.currentStock ?? "N/A";
+      if (visibleCols.includes("stockStatus")) exportRow.StockStatus = row.stockStatus;
+      return exportRow;
+    });
     const csv = Papa.unparse(csvData);
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
@@ -165,12 +182,12 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
     a.download = `best_sellers_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [processed]);
+  }, [processed, visibleCols]);
 
   return (
-    <div className="mx-4 my-3 bg-white border border-edge rounded-lg shadow-sm overflow-hidden">
+    <div className="mx-4 my-3 bg-white border border-edge rounded-lg shadow-sm overflow-hidden flex flex-col min-h-0 relative z-0">
       {/* Header bar */}
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-edge flex-wrap">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-edge flex-wrap shrink-0 relative z-20">
         <h3 className="text-xs font-semibold text-primary">Best Seller Data</h3>
 
         <div className="flex-1 min-w-0" />
@@ -212,6 +229,46 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
           ))}
         </div>
 
+        {/* Column Select */}
+        <div className="relative" ref={colMenuRef}>
+          <Button variant="outline" size="sm" onClick={() => setColMenuOpen((v) => !v)}>
+            <Columns3 size={12} className="mr-1.5" />
+            Columns
+            {COLUMNS.length - visibleCols.length > 0 && (
+              <span className="ml-1.5 bg-accent text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+                {COLUMNS.length - visibleCols.length} hidden
+              </span>
+            )}
+          </Button>
+          {colMenuOpen && (
+            <div className="absolute right-0 top-full mt-1 z-50 w-48 bg-white border border-edge rounded-lg shadow-lg py-1 max-h-64 overflow-y-auto">
+              <div className="flex items-center gap-1 px-2 py-1.5 border-b border-edge">
+                <button onClick={() => setVisibleCols(COLUMNS.map(c => c.key))} className="text-[11px] text-accent hover:underline cursor-pointer">Select All</button>
+              </div>
+              <div className="py-1">
+                {COLUMNS.map((c) => {
+                  const checked = visibleCols.includes(c.key);
+                  return (
+                    <button
+                      key={c.key}
+                      onClick={() => toggleCol(c.key)}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors"
+                    >
+                      <span className={cn(
+                        "flex items-center justify-center w-4 h-4 rounded border shrink-0",
+                        checked ? "bg-accent border-accent text-white" : "border-edge bg-white"
+                      )}>
+                        {checked && <Check size={10} strokeWidth={3} />}
+                      </span>
+                      <span className="text-primary truncate">{c.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Export */}
         <Button variant="outline" size="sm" onClick={handleExport}>
           <Download size={12} className="mr-1.5" />
@@ -220,23 +277,23 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto max-h-[500px]">
-        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 900 }}>
+      <div className="overflow-x-auto max-h-[500px] flex-1 min-h-0 relative z-10">
+        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: `${activeCols.length * 80}px` }}>
           <colgroup>
-            {COLUMNS.map((col) => (
+            {activeCols.map((col) => (
               <col key={col.key} style={{ width: `${((col.flex / totalFlex) * 100).toFixed(2)}%` }} />
             ))}
           </colgroup>
-          <thead className="sticky top-0 z-10 bg-surface">
+          <thead className="sticky top-0 z-10 bg-surface shadow-sm">
             <tr className="border-b border-edge">
-              {COLUMNS.map((col) => {
+              {activeCols.map((col) => {
                 const isSorted = sortCol === col.key;
                 return (
                   <th
                     key={col.key}
                     onClick={() => toggleSort(col.key)}
                     className={cn(
-                      "text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group",
+                      "text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group bg-surface",
                       isSorted ? "text-amber-600" : "text-muted hover:text-primary"
                     )}
                   >
@@ -258,7 +315,7 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
           <tbody>
             {pagedRows.length === 0 ? (
               <tr>
-                <td colSpan={COLUMNS.length} className="text-center py-12 text-muted text-sm">
+                <td colSpan={activeCols.length} className="text-center py-12 text-muted text-sm">
                   No rows match the current filters.
                 </td>
               </tr>
@@ -272,21 +329,23 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
                     row.stockStatus === "Low Stock" && "bg-amber-50/30"
                   )}
                 >
-                  <td className="px-3 py-1.5 text-[12px] font-mono text-muted/60">{row.rank}</td>
-                  <td className="px-3 py-1.5 text-[12px] font-mono truncate">{row.itemCode}</td>
-                  <td className="px-3 py-1.5 text-[12px] truncate" title={row.productName}>{row.productName}</td>
-                  <td className="px-3 py-1.5 text-[12px] truncate">{row.category || "—"}</td>
-                  <td className="px-3 py-1.5 text-[12px] font-mono">{formatQty(row.totalQty)}</td>
-                  <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrency(row.totalRevenue)}</td>
-                  <td className="px-3 py-1.5 text-[12px] font-mono">{row.orderCount}</td>
-                  <td className="px-3 py-1.5 text-[12px] font-mono">{row.avgDiscount.toFixed(2)}%</td>
-                  <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrency(row.avgUnitPrice)}</td>
-                  <td className="px-3 py-1.5 text-[12px] font-mono">
-                    {row.currentStock !== null ? formatQty(row.currentStock) : "N/A"}
-                  </td>
-                  <td className="px-3 py-1.5">
-                    <StockStatusBadge status={row.stockStatus} />
-                  </td>
+                  {visibleCols.includes("rank") && <td className="px-3 py-1.5 text-[12px] font-mono text-muted/60">{row.rank}</td>}
+                  {visibleCols.includes("itemCode") && <td className="px-3 py-1.5 text-[12px] font-mono truncate">{row.itemCode}</td>}
+                  {visibleCols.includes("productName") && <td className="px-3 py-1.5 text-[12px] truncate" title={row.productName}>{row.productName}</td>}
+                  {visibleCols.includes("category") && <td className="px-3 py-1.5 text-[12px] truncate">{row.category || "—"}</td>}
+                  {visibleCols.includes("totalQty") && <td className="px-3 py-1.5 text-[12px] font-mono">{formatQty(row.totalQty)}</td>}
+                  {visibleCols.includes("totalRevenue") && <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrency(row.totalRevenue)}</td>}
+                  {visibleCols.includes("orderCount") && <td className="px-3 py-1.5 text-[12px] font-mono">{row.orderCount}</td>}
+                  {visibleCols.includes("currentStock") && (
+                    <td className="px-3 py-1.5 text-[12px] font-mono">
+                      {row.currentStock !== null ? formatQty(row.currentStock) : "N/A"}
+                    </td>
+                  )}
+                  {visibleCols.includes("stockStatus") && (
+                    <td className="px-3 py-1.5">
+                      <StockStatusBadge status={row.stockStatus} />
+                    </td>
+                  )}
                 </tr>
               ))
             )}
@@ -295,7 +354,7 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
       </div>
 
       {/* Pagination bar */}
-      <div className="border-t border-edge bg-surface px-4 h-10 flex items-center gap-3">
+      <div className="border-t border-edge bg-surface px-4 h-10 flex items-center gap-3 shrink-0 relative z-20">
         <span className="text-[11px] text-muted font-mono shrink-0">
           {processed.length === 0
             ? "0 rows"

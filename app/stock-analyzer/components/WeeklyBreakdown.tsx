@@ -22,10 +22,11 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Title, T
 
 interface WeeklyBreakdownProps {
   data: WeeklyDataPoint[];
+  defaultOpen?: boolean;
 }
 
-export default function WeeklyBreakdown({ data }: WeeklyBreakdownProps) {
-  const [isOpen, setIsOpen] = useState(false);
+export default function WeeklyBreakdown({ data, defaultOpen = false }: WeeklyBreakdownProps) {
+  const [isOpen, setIsOpen] = useState(defaultOpen);
 
   // Only show when >= 2 weeks of data
   if (data.length < 2) return null;

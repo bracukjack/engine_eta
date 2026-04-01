@@ -46,7 +46,7 @@ export function parseSalesRows(raw: Record<string, unknown>[]): SalesRow[] {
       Discount: parseNum(r["Discount"]) ?? 0,
       CostPriceFC: parseNum(r["CostPriceFC"]) ?? 0,
       OrderDate: String(r["Order date"] ?? "").trim(),
-      OrderDateParsed: dateParsed,
+      OrderDateParsed: dateParsed.toISOString(),
       OrderNumber: String(r["Order number"] ?? "").trim(),
       OrderedByCode: String(r["Ordered byCode"] ?? "").trim(),
       OrderedByDescription: String(r["Ordered byDescription"] ?? "").trim(),
@@ -59,13 +59,14 @@ export function parseSalesRows(raw: Record<string, unknown>[]): SalesRow[] {
 // ── Auto-detect date range ───────────────────────────────────────────────────
 export function getDateRange(sales: SalesRow[]): { min: Date; max: Date } | null {
   if (sales.length === 0) return null;
-  let min = sales[0].OrderDateParsed;
-  let max = sales[0].OrderDateParsed;
+  let min = new Date(sales[0].OrderDateParsed).getTime();
+  let max = new Date(sales[0].OrderDateParsed).getTime();
   for (const row of sales) {
-    if (row.OrderDateParsed < min) min = row.OrderDateParsed;
-    if (row.OrderDateParsed > max) max = row.OrderDateParsed;
+    const t = new Date(row.OrderDateParsed).getTime();
+    if (t < min) min = t;
+    if (t > max) max = t;
   }
-  return { min, max };
+  return { min: new Date(min), max: new Date(max) };
 }
 
 // ── Compute date filter boundaries ───────────────────────────────────────────
@@ -84,14 +85,14 @@ export function getDateFilterRange(
     };
   }
 
-  const end = maxDate;
+  const end = new Date();
   const start = new Date(end);
   switch (preset) {
     case "1w": start.setDate(start.getDate() - 7); break;
     case "1m": start.setMonth(start.getMonth() - 1); break;
-    case "2m": start.setMonth(start.getMonth() - 2); break;
     case "3m": start.setMonth(start.getMonth() - 3); break;
     case "6m": start.setMonth(start.getMonth() - 6); break;
+    case "1y": start.setFullYear(start.getFullYear() - 1); break;
   }
   return { start, end };
 }
@@ -164,12 +165,14 @@ export function aggregateBestSellers(
   // Filter by date range BEFORE aggregation
   let filtered = sales;
   if (filters.dateStart) {
-    filtered = filtered.filter((r) => r.OrderDateParsed >= filters.dateStart!);
+    const startT = filters.dateStart.getTime();
+    filtered = filtered.filter((r) => new Date(r.OrderDateParsed).getTime() >= startT);
   }
   if (filters.dateEnd) {
     const endOfDay = new Date(filters.dateEnd);
     endOfDay.setHours(23, 59, 59, 999);
-    filtered = filtered.filter((r) => r.OrderDateParsed <= endOfDay);
+    const endT = endOfDay.getTime();
+    filtered = filtered.filter((r) => new Date(r.OrderDateParsed).getTime() <= endT);
   }
 
   // Aggregate per item
@@ -297,18 +300,20 @@ export function computeWeeklyBreakdown(
 ): WeeklyDataPoint[] {
   let filtered = sales;
   if (dateStart) {
-    filtered = filtered.filter((r) => r.OrderDateParsed >= dateStart);
+    const startT = dateStart.getTime();
+    filtered = filtered.filter((r) => new Date(r.OrderDateParsed).getTime() >= startT);
   }
   if (dateEnd) {
     const endOfDay = new Date(dateEnd);
     endOfDay.setHours(23, 59, 59, 999);
-    filtered = filtered.filter((r) => r.OrderDateParsed <= endOfDay);
+    const endT = endOfDay.getTime();
+    filtered = filtered.filter((r) => new Date(r.OrderDateParsed).getTime() <= endT);
   }
 
   const weekMap = new Map<string, { weekStart: Date; totalQty: number; totalRevenue: number }>();
 
   for (const row of filtered) {
-    const ws = getWeekStart(row.OrderDateParsed);
+    const ws = getWeekStart(new Date(row.OrderDateParsed));
     const key = ws.toISOString().slice(0, 10);
     let entry = weekMap.get(key);
     if (!entry) {
