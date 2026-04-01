@@ -1,0 +1,44 @@
+﻿Γû▓ Next.js 16.1.6 (Turbopack)
+
+  Creating an optimized production build ...
+Γ£ô Compiled successfully in 3.6s
+  Running TypeScript ...
+node.exe : Failed to compile.
+At line:1 char:1
++ & "C:\nvm4w\nodejs/node.exe" "C:\nvm4
+w\nodejs/node_modules/npm/bin/np ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpeci 
+   fied: (Failed to compile.:String)   
+  [], RemoteException
+    + FullyQualifiedErrorId : NativeCo 
+   mmandError
+ 
+
+./app/stock-analyzer/page.tsx:110:21
+Type error: Expected 0 arguments, but 
+got 1.
+
+[0m [90m 108 |[39m   
+[36mconst[39m handleFile [33m=[39m 
+useCallback(
+ [90m 109 |[39m     [36masync[39m 
+(file[33m:[39m [33mFile[39m) 
+[33m=>[39m {
+[31m[1m>[22m[39m[90m 110 |[39m   
+    setProcessing([32m"processing"[39
+m)[33m;[39m
+ [90m     |[39m                     
+[31m[1m^[22m[39m
+ [90m 111 |[39m       [36mtry[39m {
+ [90m 112 |[39m         
+[36mconst[39m buffer [33m=[39m 
+[36mawait[39m 
+file[33m.[39marrayBuffer()[33m;[39m
+ [90m 113 |[39m         
+[36mconst[39m rawData [33m=[39m 
+[36mawait[39m 
+parseFileBuffer(buffer)[33m;[39m[0m
+Next.js build worker exited with code: 
+1 and signal: null

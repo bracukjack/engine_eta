@@ -44,7 +44,7 @@ const TOOLS = [
     name: "PO Tracker",
     href: "/po-tracker",
     icon: Truck,
-    active: false,
+    active: true,
   },
   {
     name: "Report Builder",

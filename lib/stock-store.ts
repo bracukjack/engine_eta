@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { StockRow, StockSummary, StockStatusFilter, StockTableSize } from "./stock-types";
+import type { StockRow, StockSummary, StockStatusFilter, StockTableSize, SalesRow } from "./stock-types";
 import { STOCK_COLUMNS } from "./stock-types";
 import { idbStorage } from "./idb-storage";
 
@@ -29,6 +29,12 @@ interface StockState {
   itemsLookup: ItemsLookup;
   itemsFileName: string | null;
 
+  // ── Best Seller: sales data ──
+  salesData: SalesRow[];
+  salesFileName: string | null;
+  salesRowCount: number;
+  activeTab: "realStock" | "bestSeller";
+
   search: string;
   categoryFilter: string[];
   class01Filter: string[];
@@ -50,6 +56,11 @@ interface StockState {
   setProcessing: () => void;
   setError: (msg: string) => void;
   reset: () => void;
+
+  // ── Best Seller: actions ──
+  setSalesData: (rows: SalesRow[], fileName: string) => void;
+  clearSalesData: () => void;
+  setActiveTab: (tab: "realStock" | "bestSeller") => void;
 
   setSearch: (s: string) => void;
   setCategoryFilter: (cats: string[]) => void;
@@ -79,6 +90,12 @@ export const useStockStore = create<StockState>()(
 
       itemsLookup: {},
       itemsFileName: null,
+
+      // ── Best Seller defaults ──
+      salesData: [],
+      salesFileName: null,
+      salesRowCount: 0,
+      activeTab: "realStock",
 
       search: "",
       categoryFilter: [],
@@ -134,6 +151,10 @@ export const useStockStore = create<StockState>()(
           error: null,
           itemsLookup: {},
           itemsFileName: null,
+          salesData: [],
+          salesFileName: null,
+          salesRowCount: 0,
+          activeTab: "realStock",
           search: "",
           categoryFilter: [],
           class01Filter: [],
@@ -143,6 +164,13 @@ export const useStockStore = create<StockState>()(
           sortDirection: "asc",
           currentPage: 1,
         }),
+
+      // ── Best Seller actions ──
+      setSalesData: (rows, fileName) =>
+        set({ salesData: rows, salesFileName: fileName, salesRowCount: rows.length }),
+      clearSalesData: () =>
+        set({ salesData: [], salesFileName: null, salesRowCount: 0, activeTab: "realStock" }),
+      setActiveTab: (activeTab) => set({ activeTab }),
 
       setSearch: (search) => set({ search, currentPage: 1 }),
       setCategoryFilter: (categoryFilter) => set({ categoryFilter, currentPage: 1 }),
@@ -181,6 +209,9 @@ export const useStockStore = create<StockState>()(
         itemsFileName: s.itemsFileName,
         summary: s.summary,
         visibleColumns: s.visibleColumns,
+        salesData: s.salesData,
+        salesFileName: s.salesFileName,
+        salesRowCount: s.salesRowCount,
       }),
     }
   )

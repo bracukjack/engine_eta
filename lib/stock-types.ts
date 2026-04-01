@@ -21,6 +21,50 @@ export interface StockSummary {
   totalPlannedOut: number;
 }
 
+export interface SalesRow {
+  Header: string;
+  Item: string;
+  ItemDescription: string;
+  Quantity: number;
+  NetPrice: number;
+  UnitPrice: number;
+  Discount: number;
+  CostPriceFC: number;
+  OrderDate: string;       // raw DD-MM-YYYY string
+  OrderDateParsed: string; // ISO string for filtering and storage
+  OrderNumber: string;
+  OrderedByCode: string;
+  OrderedByDescription: string;
+}
+
+export type StockStatusLabel = "Sold Out" | "Low Stock" | "Healthy" | "Overstocked" | "N/A";
+
+export interface BestSellerItem {
+  rank: number;
+  itemCode: string;
+  productName: string;
+  category: string;
+  totalQty: number;
+  totalRevenue: number;
+  orderCount: number;
+  avgDiscount: number;
+  avgUnitPrice: number;
+  currentStock: number | null;
+  plannedIn: number | null;
+  plannedOut: number | null;
+  stockStatus: StockStatusLabel;
+}
+
+export interface WeeklyDataPoint {
+  weekLabel: string;
+  weekStart: Date;
+  totalQty: number;
+  totalRevenue: number;
+}
+
+export type DateRangePreset = "all" | "1w" | "1m" | "3m" | "6m" | "1y" | "custom";
+export type BestSellerSortBy = "totalQty" | "totalRevenue" | "orderCount";
+
 export const STOCK_COLUMNS: {
   key: keyof StockRow;
   label: string;

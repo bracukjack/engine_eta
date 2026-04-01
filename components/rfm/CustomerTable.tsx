@@ -27,7 +27,7 @@ function SegmentBadge({ label, color }: { label: SegmentLabel; color: string }) 
     <span
       className="relative inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white whitespace-nowrap cursor-help"
       style={{ background: color }}
-      title={tooltip}
+      data-tooltip={tooltip}
     >
       {meta.emoji} {label}
     </span>

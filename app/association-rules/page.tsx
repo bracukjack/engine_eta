@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useCallback, useEffect, useState } from "react";
+import { useRef, useCallback, useEffect, useState, Suspense } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import type {
   AnalysisResults,
   WorkerFilters,
@@ -50,7 +51,9 @@ const DEFAULT_RANKING_WEIGHTS: RankingWeights = {
   support: 0.1,
 };
 
-export default function AssociationRulesPage() {
+function AssociationRulesInner() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const workerRef = useRef<Worker | null>(null);
 
   // ── File state ───────────────────────────────────────────────────────────
@@ -83,8 +86,11 @@ export default function AssociationRulesPage() {
   const [optimizeProfit, setOptimizeProfit] = useState(false);
   const [rankingWeights, setRankingWeights] = useState<RankingWeights>(DEFAULT_RANKING_WEIGHTS);
 
-  // ── UI state ─────────────────────────────────────────────────────────────
-  const [tab, setTab] = useState<AnalysisTab>("recommendations");
+  // ── UI state ─────────────────────────────────────────────────────────────────
+  const tab = (searchParams.get("tab") ?? "recommendations") as AnalysisTab;
+  const setTab = useCallback((t: AnalysisTab) => {
+    router.replace(`?tab=${t}`, { scroll: false });
+  }, [router]);
 
   // ── IDB persistence ──────────────────────────────────────────────────────
 
@@ -397,5 +403,13 @@ export default function AssociationRulesPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AssociationRulesPage() {
+  return (
+    <Suspense fallback={<div className="flex-1" />}>
+      <AssociationRulesInner />
+    </Suspense>
   );
 }

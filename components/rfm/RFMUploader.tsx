@@ -22,11 +22,11 @@ const REQUIRED_COLS = [
 ];
 
 const SEGMENT_TOOLTIPS: Record<string, string> = {
-  "VIP Champions":   "Pelanggan dengan pembelian terbaru, sering, dan bernilai tinggi",
-  "At Risk":         "Dulu aktif tapi sudah lama tidak memesan — perlu segera diaktifkan kembali",
-  "New / Potential": "Baru bergabung atau masih jarang beli — prospek yang perlu dikembangkan",
-  "One-time Buyers": "Hanya pernah memesan satu kali — belum menunjukkan loyalitas",
-  "Loyal Customers": "Rutin memesan dengan nilai konsisten — tulang punggung bisnis",
+  "VIP Champions":   "Pembelian terbaru, sering, bernilai tinggi",
+  "At Risk":         "Dulu aktif, lama tidak memesan",
+  "New / Potential": "Baru atau jarang beli — prospek",
+  "One-time Buyers": "Baru satu kali memesan",
+  "Loyal Customers": "Rutin memesan, nilai konsisten",
 };
 // Export so other components can reuse
 export { SEGMENT_TOOLTIPS };
