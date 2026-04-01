@@ -2,6 +2,7 @@
 
 import type { SeasonalPeriod } from "@/lib/association-rules/types";
 import { Calendar, TrendingUp, ShoppingCart } from "lucide-react";
+import { showCopiedToast } from "@/components/ui/data-tooltip";
 
 interface Props {
   data: SeasonalPeriod[];
@@ -72,7 +73,17 @@ export function SeasonalInsights({ data }: Props) {
       </div>
 
       {/* Period details table */}
-      <div className="border border-edge rounded-lg bg-white overflow-hidden">
+      <div
+        className="border border-edge rounded-lg bg-white overflow-hidden"
+        onDoubleClick={(e) => {
+          const el = (e.target as HTMLElement).closest("[data-tip]");
+          if (!el) return;
+          const text = (el.textContent ?? "").trim();
+          if (!text) return;
+          navigator.clipboard.writeText(text);
+          showCopiedToast(e.clientX, e.clientY);
+        }}
+      >
         <div className="flex items-center h-8 border-b border-edge bg-surface px-4 text-[10px] font-semibold text-muted uppercase tracking-wider">
           <div className="w-[100px] shrink-0 flex items-center gap-1"><Calendar size={10} /> Period</div>
           <div className="w-[80px] shrink-0 text-center">Orders</div>
@@ -88,7 +99,7 @@ export function SeasonalInsights({ data }: Props) {
             <div className="w-[90px] shrink-0 text-center font-mono">{d.avgBasketSize}</div>
             <div className="flex-1 flex flex-wrap gap-1">
               {d.topItemNames.slice(0, 3).map((name, i) => (
-                <span key={i} className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[130px]">{name}</span>
+                <span key={i} className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded truncate max-w-[130px]" data-tip={name}>{name}</span>
               ))}
             </div>
           </div>

@@ -16,7 +16,6 @@ import {
   RealStockBadge,
   StockColumnToggle,
   CategoryFilter,
-  DataTooltip,
   showCopiedToast,
 } from "../components/shared";
 
@@ -166,7 +165,6 @@ export default function RealStockTab() {
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      <DataTooltip />
       {/* Control bar */}
       <div className="shrink-0 border-b border-edge bg-surface px-4 py-2 flex items-center gap-2 flex-wrap">
         {/* Search */}

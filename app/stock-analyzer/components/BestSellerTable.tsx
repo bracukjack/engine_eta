@@ -3,7 +3,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatQty } from "@/lib/bestSeller";
-import { DataTooltip, showCopiedToast } from "./shared";
+import { showCopiedToast } from "./shared";
 
 function formatCurrencyInt(value: number): string {
   const abs = Math.round(Math.abs(value));
@@ -195,7 +195,6 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
 
   return (
     <div className="mx-4 my-3 bg-white border border-edge rounded-lg shadow-sm overflow-hidden flex flex-col min-h-0 relative z-0">
-      <DataTooltip />
       {/* Header bar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-edge flex-wrap shrink-0 relative z-20">
         <h3 className="text-xs font-semibold text-primary">Best Seller Data</h3>

@@ -93,7 +93,7 @@ export function ColumnToggle() {
                   >
                     {checked && <Check size={10} strokeWidth={3} />}
                   </span>
-                  <span className="text-primary">{col.label}</span>
+                  <span className="ml-auto text-[10px] text-muted/60 truncate max-w-[100px]">{col.label}</span>
                 </button>
               );
             })}

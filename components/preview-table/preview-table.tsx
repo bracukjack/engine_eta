@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
 import { HIGHLIGHTED_PREVIEW_COLUMNS, FILE_SLOTS_CONFIG, TABLE_SIZE_CONFIG, type FileKey, type TableSize } from "@/lib/types";
 import { Search, AlertTriangle, FileText, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
+import { showCopiedToast } from "@/components/ui/data-tooltip";
 
 const FIRST_COL_WIDTH = 44;
 const COL_MIN_WIDTH = 130;
@@ -252,7 +253,18 @@ export function PreviewTable() {
           </div>
 
           {/* ── Body (virtualized) ──────────────────────────── */}
-          <div ref={containerRef} className="flex-1 min-h-0">
+          <div
+            ref={containerRef}
+            className="flex-1 min-h-0"
+            onDoubleClick={(e) => {
+              const el = (e.target as HTMLElement).closest("[data-tip]");
+              if (!el) return;
+              const text = (el.getAttribute("data-tip") ?? "").trim();
+              if (!text) return;
+              navigator.clipboard.writeText(text);
+              showCopiedToast(e.clientX, e.clientY);
+            }}
+          >
             {displayRows.length > 0 ? (
               <List
                 outerRef={outerRef}
@@ -286,7 +298,7 @@ export function PreviewTable() {
                               isHl ? "text-primary" : "text-primary/55"
                             )}
                             style={{ width: COL_MIN_WIDTH, fontSize: sizeConfig.fontSize, padding: sizeConfig.cellPadding }}
-                            title={cell}
+                            data-tip={cell || undefined}
                           >
                             {cell === "" ? <span className="text-muted/30">—</span> : cell}
                           </div>
