@@ -17,7 +17,7 @@ import {
 
 const normalize = (val: unknown) => String(val ?? "").trim();
 
-async function runPublishComparison(
+export async function runPublishComparison(
   mdmBuffer: ArrayBuffer,
   publishedBuffer: ArrayBuffer
 ): Promise<{ active: PublishRow[]; inactive: PublishRow[]; summary: import("@/lib/mdm-store").PublishSummary }> {
@@ -29,22 +29,46 @@ async function runPublishComparison(
   if (!dataWs) throw new Error("File does not contain expected sheet 'Data'. Please upload the correct MDM Export file.");
 
   const rawRows = XLSX.utils.sheet_to_json<unknown[]>(dataWs, { header: 1, defval: "" }) as unknown[][];
-  if (rawRows.length < 3) throw new Error("MDM Export 'Data' sheet has insufficient rows.");
+  if (rawRows.length < 2) throw new Error("MDM Export 'Data' sheet has insufficient rows.");
 
-  const attrRow = rawRows[1] as unknown[];
-
+  let headerRowIndex = -1;
   const colMap = new Map<string, number>();
-  attrRow.forEach((code, idx) => {
-    const c = normalize(code);
-    if (c) colMap.set(c, idx);
-  });
+
+  for (let r = 0; r < Math.min(rawRows.length, 10); r++) {
+    const rowObj = rawRows[r] as unknown[];
+    let hasRef = false;
+    const tempMap = new Map<string, number>();
+
+    rowObj.forEach((code, idx) => {
+      const c = normalize(code).toLowerCase();
+      if (c) tempMap.set(c, idx);
+      if (c === "reference") hasRef = true;
+    });
+
+    if (hasRef) {
+      headerRowIndex = r;
+      tempMap.forEach((v, k) => colMap.set(k, v));
+      break;
+    }
+  }
+
+  if (headerRowIndex === -1) {
+    throw new Error("Could not find a header row containing 'Reference' column in MDM Export 'Data' sheet.");
+  }
 
   const getByAttr = (row: unknown[], attrCode: string) => {
-    const idx = colMap.get(attrCode);
+    const idx = colMap.get(attrCode.toLowerCase());
     return idx !== undefined ? normalize(row[idx]) : "";
   };
 
-  const productRows = rawRows.slice(2);
+  // Skip attribute-code row if present (some MDM exports include it as row after header)
+  let dataStartIndex = headerRowIndex + 1;
+  const nextRow = rawRows[dataStartIndex] as unknown[];
+  if (nextRow && nextRow[0] && String(nextRow[0]).trim().toLowerCase().startsWith("attr_")) {
+    dataStartIndex++;
+  }
+
+  const productRows = rawRows.slice(dataStartIndex);
 
   // ── Read Published Products "Products" sheet ──────────────────────────────
   const pubWb = XLSX.read(new Uint8Array(publishedBuffer), { type: "array" });
@@ -55,7 +79,13 @@ async function runPublishComparison(
 
   const pubMap = new Map<string, Record<string, unknown>>();
   for (const row of pubData) {
-    const sku = normalize(row["Sku"]);
+    let sku = "";
+    for (const key of Object.keys(row)) {
+      if (key.trim().toLowerCase() === "sku") {
+        sku = normalize(row[key]);
+        break;
+      }
+    }
     if (sku) pubMap.set(sku, row);
   }
 
@@ -65,7 +95,7 @@ async function runPublishComparison(
   const inactive: PublishRow[] = [];
 
   productRows.forEach((row, i) => {
-    const ref = getByAttr(row as unknown[], "attr_reference");
+    const ref = getByAttr(row as unknown[], "Reference");
     if (!ref) { skipped++; return; }
 
     const pubRow = pubMap.get(ref);
@@ -78,20 +108,30 @@ async function runPublishComparison(
       // Not found in published list → unpublished
       publish_status = "unpublished";
     } else {
-      const pub = pubRow["Published"];
+      let pub: unknown;
+      let pubPrice: unknown;
+      let pubStock: unknown;
+
+      for (const k of Object.keys(pubRow)) {
+        const lowerK = k.trim().toLowerCase();
+        if (lowerK === "published") pub = pubRow[k];
+        if (lowerK === "price") pubPrice = pubRow[k];
+        if (lowerK === "stockquantity") pubStock = pubRow[k];
+      }
+
       publishedPlatform = pub === true || normalize(pub).toLowerCase() === "true";
       publish_status = publishedPlatform ? "published" : "unpublished";
-      price = normalize(pubRow["Price"]);
-      stock = normalize(pubRow["StockQuantity"]);
+      price = normalize(pubPrice);
+      stock = normalize(pubStock);
     }
 
     const resultRow: PublishRow = {
       _id: i,
       reference: ref,
-      productTitle: getByAttr(row as unknown[], "attr_name"),
-      category: getByAttr(row as unknown[], "attr_category"),
-      brand: getByAttr(row as unknown[], "attr_brand"),
-      ean: getByAttr(row as unknown[], "attr_ean"),
+      productTitle: getByAttr(row as unknown[], "Product title"),
+      category: getByAttr(row as unknown[], "Category"),
+      brand: getByAttr(row as unknown[], "Brand"),
+      ean: getByAttr(row as unknown[], "Ean Code"),
       publish_status,
       publishedPlatform,
       price,
@@ -241,25 +281,6 @@ export default function PublishMDMTab() {
     [setPublishSearch, searchTimeout]
   );
 
-  const canAnalyze = !!mdmFile && !!publishedFile;
-
-  const handleAnalyze = useCallback(async () => {
-    if (!mdmFile || !publishedFile) return;
-    setPublishState("processing");
-    try {
-      const [mdmBuffer, publishedBuffer] = await Promise.all([
-        mdmFile.arrayBuffer(),
-        publishedFile.arrayBuffer(),
-      ]);
-      await new Promise((r) => setTimeout(r, 50));
-      const { active, inactive, summary } = await runPublishComparison(mdmBuffer, publishedBuffer);
-      setPublishResults(active, inactive, summary);
-    } catch (e) {
-      setPublishError(e instanceof Error ? e.message : String(e));
-      setPublishState("error");
-    }
-  }, [mdmFile, publishedFile, setPublishState, setPublishResults, setPublishError]);
-
   // All rows combined — single unified table
   const allRows = useMemo(
     () => [...publishActiveRows, ...publishInactiveRows],
@@ -400,12 +421,8 @@ export default function PublishMDMTab() {
           <CheckCircle2 size={40} className="mx-auto text-accent/40" />
           <div className="space-y-1">
             <p className="text-sm font-semibold text-primary">Both files ready</p>
-            <p className="text-[11px] text-muted">Click Analyze to compare MDM Export against Published Products.</p>
+            <p className="text-[11px] text-muted">Click Run Analysis in the top bar to compare MDM Export against Published Products.</p>
           </div>
-          <Button variant="accent" size="md" onClick={handleAnalyze} disabled={!canAnalyze}>
-            <Play size={13} className="mr-1.5" />
-            Analyze
-          </Button>
         </div>
       </div>
     );
@@ -465,11 +482,6 @@ export default function PublishMDMTab() {
         <Button variant="outline" size="sm" onClick={handleExport}>
           <Download size={12} className="mr-1.5" />
           Export CSV
-        </Button>
-
-        <Button variant="outline" size="sm" onClick={handleAnalyze}>
-          <Play size={12} className="mr-1.5" />
-          Re-analyze
         </Button>
       </div>
 
@@ -580,8 +592,8 @@ export default function PublishMDMTab() {
           {sortedRows.length === 0
             ? "0 rows"
             : publishRowsPerPage === "all"
-            ? `${sortedRows.length} rows`
-            : `${Math.min((safePage - 1) * (publishRowsPerPage as number) + 1, sortedRows.length)}–${Math.min(safePage * (publishRowsPerPage as number), sortedRows.length)} of ${sortedRows.length}`}
+              ? `${sortedRows.length} rows`
+              : `${Math.min((safePage - 1) * (publishRowsPerPage as number) + 1, sortedRows.length)}–${Math.min(safePage * (publishRowsPerPage as number), sortedRows.length)} of ${sortedRows.length}`}
         </span>
         <div className="flex-1" />
         <div className="flex items-center gap-1 shrink-0">

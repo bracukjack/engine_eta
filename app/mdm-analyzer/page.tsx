@@ -7,7 +7,9 @@ import { useMDMStore } from "@/lib/mdm-store";
 import type { ErrorRow, Country, CountrySource } from "@/lib/mdm-store";
 import { getXLSX } from "@/lib/parsers";
 import { StockFileSlot } from "@/app/stock-analyzer/components/shared";
-import { CheckCircle, AlertTriangle, Loader2, Database } from "lucide-react";
+import { CheckCircle, AlertTriangle, Loader2, Database, Play } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { runPublishComparison } from "./tabs/PublishMDMTab";
 
 const PublishMDMTab = lazy(() => import("./tabs/PublishMDMTab"));
 const ErrorMDMTab = lazy(() => import("./tabs/ErrorMDMTab"));
@@ -89,6 +91,12 @@ function MDMAnalyzerInner() {
   const resetError = useMDMStore((s) => s.resetError);
   const resetPublish = useMDMStore((s) => s.resetPublish);
 
+  const publishedFile = useMDMStore((s) => s.publishedFile);
+  const publishState = useMDMStore((s) => s.publishState);
+  const setPublishState = useMDMStore((s) => s.setPublishState);
+  const setPublishError = useMDMStore((s) => s.setPublishError);
+  const setPublishResults = useMDMStore((s) => s.setPublishResults);
+
   const activeTab = (searchParams.get("tab") ?? "publish") as TabId;
 
   const setActiveTab = useCallback(
@@ -141,18 +149,54 @@ function MDMAnalyzerInner() {
     resetPublish();
   }, [clearPublishedFile, resetPublish]);
 
+  const handleAnalyzePublish = useCallback(async () => {
+    if (!mdmFile || !publishedFile) return;
+    setPublishState("processing");
+    try {
+      const [mdmBuf, pubBuf] = await Promise.all([
+        mdmFile.arrayBuffer(),
+        publishedFile.arrayBuffer(),
+      ]);
+      await new Promise((r) => setTimeout(r, 50));
+      const { active, inactive, summary } = await runPublishComparison(mdmBuf, pubBuf);
+      setPublishResults(active, inactive, summary);
+    } catch (e) {
+      setPublishError(e instanceof Error ? e.message : String(e));
+      setPublishState("error");
+    }
+  }, [mdmFile, publishedFile, setPublishState, setPublishResults, setPublishError]);
+
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-base">
 
       {/* Page header */}
-      <div className="shrink-0 border-b border-edge bg-surface px-5 py-3 flex items-center gap-3">
-        <Database size={16} className="text-accent shrink-0" />
-        <div>
-          <h1 className="text-sm font-semibold text-primary">MDM Analyzer</h1>
-          <p className="text-[11px] text-muted font-mono mt-0.5">
-            {mdmFileName ?? "Upload MDM Export file to begin"}
-          </p>
+      <div className="shrink-0 border-b border-edge bg-surface px-5 py-3 flex items-center justify-start gap-x-5">
+        <div className="flex items-center gap-3">
+          <Database size={16} className="text-accent shrink-0" />
+          <div>
+            <h1 className="text-sm font-semibold text-primary">MDM Analyzer</h1>
+            <p className="text-[11px] text-muted font-mono mt-0.5">
+              {mdmFileName ?? "Upload MDM Export file to begin"}
+            </p>
+          </div>
         </div>
+        <div>
+          <Button
+            variant="accent"
+            size="sm"
+            onClick={handleAnalyzePublish}
+            disabled={!mdmFile || !publishedFile || publishState === "processing"}
+          >
+            {publishState === "processing" ? (
+              <Loader2 size={14} className="animate-spin mr-1.5" />
+            ) : (
+              <Play size={12} className="mr-1.5" />
+            )}
+            {publishState === "processing" ? "Processing..." : "Run Analysis"}
+          </Button>
+        </div>
+
+
       </div>
 
       {/* Feature tabs */}
