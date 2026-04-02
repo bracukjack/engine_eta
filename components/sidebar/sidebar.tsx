@@ -11,6 +11,7 @@ import {
   Truck,
   FileBarChart,
   Users2,
+  Database,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -32,6 +33,12 @@ const TOOLS = [
     name: "Stock Analyzer",
     href: "/stock-analyzer",
     icon: PackageSearch,
+    active: true,
+  },
+  {
+    name: "MDM Analyzer",
+    href: "/mdm-analyzer",
+    icon: Database,
     active: true,
   },
   {
