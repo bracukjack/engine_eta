@@ -309,6 +309,23 @@ export default function PublishMDMTab() {
     URL.revokeObjectURL(url);
   }, [allRows, publishVisibleColumns]);
 
+  const handleExportExcel = useCallback(async () => {
+    const XLSX = await getXLSX();
+    const activeCols = PUBLISH_COLUMNS.filter((c) => publishVisibleColumns.includes(String(c.key)));
+    const headers = activeCols.map((c) => c.label);
+    const dataRows = allRows.map((row) =>
+      activeCols.map((c) => {
+        const v = row[c.key];
+        if (c.key === "publishedPlatform") return v === null ? "" : String(v);
+        return v ?? "";
+      })
+    );
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "MDM Publish");
+    XLSX.writeFile(wb, `mdm-publish-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  }, [allRows, publishVisibleColumns]);
+
   // ── Derive table data ────────────────────────────────────────────────────
   const matcher = useMemo(() => buildSearchMatcher(publishSearch), [publishSearch]);
 
@@ -481,7 +498,11 @@ export default function PublishMDMTab() {
 
         <Button variant="outline" size="sm" onClick={handleExport}>
           <Download size={12} className="mr-1.5" />
-          Export CSV
+          CSV
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleExportExcel}>
+          <Download size={12} className="mr-1.5" />
+          Excel
         </Button>
       </div>
 
