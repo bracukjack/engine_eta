@@ -78,10 +78,8 @@ export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number
   { key: "ETA", label: "ETA", flex: 1.5 },
   { key: "Variant Inventory Policy", label: "Policy", flex: 1.5 },
   { key: "PlannedInStock", label: "Planned", flex: 1 },
-  // { key: "PlannedOutStock", label: "Planned Out", flex: 1 },
   { key: "Discount %", label: "Disc %", flex: 1, },
   { key: "Cost per item", label: "Cost", flex: 1 },
-  // { key: "Reference", label: "Reference", flex: 2 },
 ];
 
 export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
@@ -93,7 +91,6 @@ export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
 export const INTEGER_OUTPUT_COLUMNS: Set<keyof OutputRow> = new Set([
   "Variant Quantity",
   "PlannedInStock",
-  "PlannedOutStock",
 ]);
 
 export type TableSize = "S" | "M" | "L";

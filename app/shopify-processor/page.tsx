@@ -208,14 +208,15 @@ function ShopifyProcessorInner() {
     return rows.map((row, i) => {
       const obj: Record<string, unknown> = {};
       for (const key of visibleColumns) {
+        const exportKey = key === "ETA" ? "ETA (product.metafields.custom.eta)" : key;
         if (key === "No") {
-          obj[key] = i + 1;
+          obj[exportKey] = i + 1;
         } else if (PRICE_COLUMNS.has(key)) {
-          obj[key] = formatPrice(row[key] as number | null) || 0;
+          obj[exportKey] = formatPrice(row[key] as number | null) || 0;
         } else if (INTEGER_OUTPUT_COLUMNS.has(key)) {
-          obj[key] = formatInteger(row[key] as number | null) || 0;
+          obj[exportKey] = formatInteger(row[key] as number | null) || 0;
         } else {
-          obj[key] = row[key];
+          obj[exportKey] = row[key];
         }
       }
       return obj;

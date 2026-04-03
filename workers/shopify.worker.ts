@@ -217,10 +217,13 @@ ctx.onmessage = (e: MessageEvent) => {
 
       if (variantQty >= 1) {
         status = "active"; published = "TRUE";  policy = "deny";
-      } else if (plannedIn >= 1) {
-        status = "active"; published = "TRUE";  policy = "continue";
       } else {
-        status = "draft";  published = "FALSE"; policy = "deny";
+        const total = variantQty + plannedIn;
+        if (total >= 1) {
+          status = "active"; published = "TRUE";  policy = "continue";
+        } else {
+          status = "draft";  published = "FALSE"; policy = "deny";
+        }
       }
 
       // GOAL 3 — ETA
