@@ -168,7 +168,7 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
 
   // Build exportable rows from visible columns
   const getExportData = useCallback(() => {
-    const COLS = [
+    const COLS: { key: string; label: string }[] = [
       { key: "rank",         label: "Rank" },
       { key: "itemCode",     label: "ItemCode" },
       { key: "productName",  label: "ProductName" },
@@ -178,13 +178,13 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
       { key: "orderCount",   label: "OrderCount" },
       { key: "currentStock", label: "CurrentStock" },
       { key: "stockStatus",  label: "StockStatus" },
-    ].filter((c) => visibleCols.includes(c.key));
+    ].filter((c) => (visibleCols as string[]).includes(c.key));
     const headers = COLS.map((c) => c.label);
-    const rows = processed.map((row) =>
-      COLS.map((c) => {
+    const rows: (string | number | null | undefined)[][] = processed.map((row) =>
+      COLS.map((c): string | number | null | undefined => {
         if (c.key === "totalRevenue") return row.totalRevenue.toFixed(2);
         if (c.key === "currentStock") return row.currentStock ?? "N/A";
-        return (row as unknown as Record<string, unknown>)[c.key] ?? "";
+        return (row as unknown as Record<string, string | number | null | undefined>)[c.key] ?? "";
       })
     );
     return { headers, rows };
