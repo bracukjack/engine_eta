@@ -3,7 +3,7 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useMDMStore, ERROR_COLUMNS } from "@/lib/mdm-store";
 import type { ErrorRow, Country } from "@/lib/mdm-store";
-import { buildSearchMatcher, cn } from "@/lib/utils";
+import { buildSearchMatcher, cn, exportToExcel, exportToCsv } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   Search, X, ArrowUp, ArrowDown, ArrowUpDown,
@@ -395,20 +395,13 @@ export default function ErrorMDMTab() {
     errorSearch !== "";
 
   const handleExport = useCallback(() => {
-    const headers = activeCols.map((c) => c.label);
-    const csvRows = sortedRows.map((row) =>
-      activeCols.map((c) => String(row[c.key] ?? ""))
-    );
-    const csv = [headers, ...csvRows]
-      .map((r) => r.map((v) => `"${v.replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `mdm-errors-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const rows = sortedRows.map((row) => activeCols.map((c) => String(row[c.key] ?? "")));
+    exportToCsv(activeCols.map((c) => c.label), rows, `mdm-errors-${new Date().toISOString().slice(0, 10)}`);
+  }, [activeCols, sortedRows]);
+
+  const handleExportExcel = useCallback(async () => {
+    const rows = sortedRows.map((row) => activeCols.map((c) => row[c.key] ?? ""));
+    await exportToExcel(activeCols.map((c) => c.label), rows, `mdm-errors-${new Date().toISOString().slice(0, 10)}`, "MDM Errors");
   }, [activeCols, sortedRows]);
 
   // ── States ───────────────────────────────────────────────────────────────
@@ -566,7 +559,11 @@ export default function ErrorMDMTab() {
 
         <Button variant="outline" size="sm" onClick={handleExport}>
           <Download size={12} className="mr-1.5" />
-          Export CSV
+          CSV
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleExportExcel}>
+          <Download size={12} className="mr-1.5" />
+          Excel
         </Button>
       </div>
 

@@ -68,3 +68,47 @@ export function formatInteger(value: number | null | undefined): string {
   const formatted = String(abs).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return n < 0 ? `-${formatted}` : formatted;
 }
+
+/**
+ * Export tabular data as an Excel (.xlsx) file using SheetJS.
+ * @param headers  Array of column header strings
+ * @param rows     2D array of cell values (one array per row)
+ * @param filename Desired filename (without extension)
+ * @param sheetName Optional worksheet name (default: "Sheet1")
+ */
+export async function exportToExcel(
+  headers: string[],
+  rows: (string | number | boolean | null | undefined)[][],
+  filename: string,
+  sheetName = "Sheet1"
+): Promise<void> {
+  const mod = await import("xlsx");
+  const XLSX = ((mod as Record<string, unknown>).default ?? mod) as typeof import("xlsx");
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  XLSX.writeFile(wb, `${filename}.xlsx`);
+}
+
+/**
+ * Export tabular data as a UTF-8 CSV file.
+ * @param headers  Array of column header strings
+ * @param rows     2D array of cell values
+ * @param filename Desired filename (without extension)
+ */
+export function exportToCsv(
+  headers: string[],
+  rows: (string | number | boolean | null | undefined)[][],
+  filename: string
+): void {
+  const csv = [headers, ...rows]
+    .map((r) => r.map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${filename}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}

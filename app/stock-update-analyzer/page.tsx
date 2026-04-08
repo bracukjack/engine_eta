@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { cn, buildSearchMatcher } from "@/lib/utils";
+import { cn, buildSearchMatcher, exportToExcel, exportToCsv } from "@/lib/utils";
 import { useStockUpdateStore } from "@/lib/stock-update-store";
 import { processStockUpdateData } from "@/lib/stock-update-logic";
 import type { StockUpdateOutputRow } from "@/lib/stock-update-logic";
@@ -173,18 +173,17 @@ export default function StockUpdateAnalyzerPage() {
     setSearchTimeout(setTimeout(() => store.setSearch(val), 200));
   }, [store, searchTimeout]);
 
-  const handleExport = useCallback(() => {
-    const headers = COLUMNS.map(c => c.label);
-    const csvRows = sortedRows.map(row => COLUMNS.map(c => row[c.key as keyof typeof row] ?? ""));
-    const csv = [headers, ...csvRows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "stock-update-analyzer.csv";
-    a.click();
-    URL.revokeObjectURL(url);
-  }, [sortedRows]);
+  const getExportRows = useCallback(() =>
+    sortedRows.map(row => COLUMNS.map(c => row[c.key as keyof typeof row] ?? "")),
+  [sortedRows]);
+
+  const handleExportCsv = useCallback(() => {
+    exportToCsv(COLUMNS.map(c => c.label), getExportRows(), "stock-update-analyzer");
+  }, [getExportRows]);
+
+  const handleExportExcel = useCallback(async () => {
+    await exportToExcel(COLUMNS.map(c => c.label), getExportRows(), "stock-update-analyzer", "Stock Update");
+  }, [getExportRows]);
 
   const handleCopyColumn = useCallback((colKey: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -293,9 +292,13 @@ export default function StockUpdateAnalyzerPage() {
                   )}
                 </div>
                 <div className="flex-1 min-w-0" />
-                <Button variant="outline" size="sm" onClick={handleExport}>
+                <Button variant="outline" size="sm" onClick={handleExportCsv}>
                   <Download size={12} className="mr-1.5" />
-                  Export CSV
+                  CSV
+                </Button>
+                <Button variant="outline" size="sm" onClick={handleExportExcel}>
+                  <Download size={12} className="mr-1.5" />
+                  Excel
                 </Button>
               </div>
 

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from "react";
 import { useStockStore } from "@/lib/stock-store";
-import { buildSearchMatcher, formatInteger, cn } from "@/lib/utils";
+import { buildSearchMatcher, formatInteger, cn, exportToExcel, exportToCsv } from "@/lib/utils";
 import { StatChip } from "@/components/status-badge/status-badge";
 import { Button } from "@/components/ui/button";
 import { STOCK_COLUMNS, STOCK_TABLE_SIZE } from "@/lib/stock-types";
@@ -144,13 +144,11 @@ export default function RealStockTab() {
   );
 
   const handleExport = useCallback(() => {
-    const headers = activeCols.map((c) => c.label);
-    const csvRows = sortedRows.map((row) => activeCols.map((c) => row[c.key] ?? ""));
-    const csv = [headers, ...csvRows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = "stock-export.csv"; a.click();
-    URL.revokeObjectURL(url);
+    exportToCsv(activeCols.map((c) => c.label), sortedRows.map((row) => activeCols.map((c) => row[c.key] ?? "")), "stock-export");
+  }, [activeCols, sortedRows]);
+
+  const handleExportExcel = useCallback(async () => {
+    await exportToExcel(activeCols.map((c) => c.label), sortedRows.map((row) => activeCols.map((c) => row[c.key] ?? "")), "stock-export", "Stock");
   }, [activeCols, sortedRows]);
 
   const sizeConfig = STOCK_TABLE_SIZE[tableSize];
@@ -197,7 +195,11 @@ export default function RealStockTab() {
 
         <Button variant="outline" size="sm" onClick={handleExport}>
           <Download size={12} className="mr-1.5" />
-          Export CSV
+          CSV
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleExportExcel}>
+          <Download size={12} className="mr-1.5" />
+          Excel
         </Button>
 
         {/* Table size */}

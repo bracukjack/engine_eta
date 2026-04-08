@@ -1,9 +1,15 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { cn } from "@/lib/utils";
+import { cn, buildSearchMatcher, exportToExcel, exportToCsv } from "@/lib/utils";
 import { formatCurrency, formatQty } from "@/lib/bestSeller";
 import { showCopiedToast } from "./shared";
+import type { BestSellerItem, StockStatusLabel } from "@/lib/stock-types";
+import {
+  Search, X, ArrowUp, ArrowDown, ArrowUpDown,
+  Download, ChevronLeft, ChevronRight, Filter, Check, Columns3
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 function formatCurrencyInt(value: number): string {
   const abs = Math.round(Math.abs(value));
@@ -11,13 +17,6 @@ function formatCurrencyInt(value: number): string {
   const formatted = abs.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return `€${sign}${formatted}`;
 }
-import { buildSearchMatcher } from "@/lib/utils";
-import type { BestSellerItem, StockStatusLabel } from "@/lib/stock-types";
-import {
-  Search, X, ArrowUp, ArrowDown, ArrowUpDown,
-  Download, ChevronLeft, ChevronRight, Filter, Check, Columns3
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
 
 function StockStatusBadge({ status }: { status: StockStatusLabel }) {
   const base = "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold font-mono";
@@ -167,31 +166,40 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
 
   const totalFlex = activeCols.reduce((s, c) => s + c.flex, 0);
 
-  // Export CSV
-  const handleExport = useCallback(async () => {
-    const { default: Papa } = await import("papaparse");
-    const csvData = processed.map((row) => {
-      const exportRow: Record<string, string | number> = {};
-      if (visibleCols.includes("rank")) exportRow.Rank = row.rank;
-      if (visibleCols.includes("itemCode")) exportRow.ItemCode = row.itemCode;
-      if (visibleCols.includes("productName")) exportRow.ProductName = row.productName;
-      if (visibleCols.includes("category")) exportRow.Category = row.category;
-      if (visibleCols.includes("totalQty")) exportRow.TotalQty = row.totalQty;
-      if (visibleCols.includes("totalRevenue")) exportRow.TotalRevenue = row.totalRevenue.toFixed(2);
-      if (visibleCols.includes("orderCount")) exportRow.OrderCount = row.orderCount;
-      if (visibleCols.includes("currentStock")) exportRow.CurrentStock = row.currentStock ?? "N/A";
-      if (visibleCols.includes("stockStatus")) exportRow.StockStatus = row.stockStatus;
-      return exportRow;
-    });
-    const csv = Papa.unparse(csvData);
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `best_sellers_${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  // Build exportable rows from visible columns
+  const getExportData = useCallback(() => {
+    const COLS = [
+      { key: "rank",         label: "Rank" },
+      { key: "itemCode",     label: "ItemCode" },
+      { key: "productName",  label: "ProductName" },
+      { key: "category",     label: "Category" },
+      { key: "totalQty",     label: "TotalQty" },
+      { key: "totalRevenue", label: "TotalRevenue" },
+      { key: "orderCount",   label: "OrderCount" },
+      { key: "currentStock", label: "CurrentStock" },
+      { key: "stockStatus",  label: "StockStatus" },
+    ].filter((c) => visibleCols.includes(c.key));
+    const headers = COLS.map((c) => c.label);
+    const rows = processed.map((row) =>
+      COLS.map((c) => {
+        if (c.key === "totalRevenue") return row.totalRevenue.toFixed(2);
+        if (c.key === "currentStock") return row.currentStock ?? "N/A";
+        return (row as unknown as Record<string, unknown>)[c.key] ?? "";
+      })
+    );
+    return { headers, rows };
   }, [processed, visibleCols]);
+
+  // Export CSV
+  const handleExport = useCallback(() => {
+    const { headers, rows } = getExportData();
+    exportToCsv(headers, rows, `best_sellers_${new Date().toISOString().slice(0, 10)}`);
+  }, [getExportData]);
+
+  const handleExportExcel = useCallback(async () => {
+    const { headers, rows } = getExportData();
+    await exportToExcel(headers, rows, `best_sellers_${new Date().toISOString().slice(0, 10)}`, "Best Sellers");
+  }, [getExportData]);
 
   return (
     <div className="mx-4 my-3 bg-white border border-edge rounded-lg shadow-sm overflow-hidden flex flex-col min-h-0 relative z-0">
@@ -281,7 +289,11 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
         {/* Export */}
         <Button variant="outline" size="sm" onClick={handleExport}>
           <Download size={12} className="mr-1.5" />
-          Export
+          CSV
+        </Button>
+        <Button variant="outline" size="sm" onClick={handleExportExcel}>
+          <Download size={12} className="mr-1.5" />
+          Excel
         </Button>
       </div>
 
