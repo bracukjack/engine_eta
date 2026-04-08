@@ -12,6 +12,54 @@ export interface StockUpdateOutputRow {
   ETAAsli: string;
 }
 
+/** 
+ * Returns the exact entry if found, otherwise all entries whose key starts with
+ * `key + "-"` (handles size-variant SKUs like BA037N-M-40x30 matching BA037N-M).
+ */
+function lookupWithSizeFallback<T>(map: Map<string, T>, key: string): T[] {
+  const exact = map.get(key);
+  if (exact !== undefined) return [exact];
+  const prefix = key + "-";
+  const results: T[] = [];
+  for (const [k, v] of map.entries()) {
+    if (k.startsWith(prefix)) results.push(v);
+  }
+  return results;
+}
+
+type StockPos = { stock: number; plannedIn: number; plannedOut: number; effectiveStock: number; showETA: boolean };
+
+function aggregateStockPos(matches: StockPos[]): StockPos {
+  if (matches.length === 0) return { stock: 0, plannedIn: 0, plannedOut: 0, effectiveStock: 0, showETA: false };
+  if (matches.length === 1) return matches[0]!;
+  const stock = matches.reduce((s, m) => s + m.stock, 0);
+  const plannedIn = matches.reduce((s, m) => s + m.plannedIn, 0);
+  const plannedOut = matches.reduce((s, m) => s + m.plannedOut, 0);
+  return {
+    stock,
+    plannedIn,
+    plannedOut,
+    effectiveStock: Math.max(0, stock - plannedOut),
+    showETA: matches.some(m => m.showETA),
+  };
+}
+
+type PoEntry = { latestDate: Date | null; rawLatestStr: string };
+
+function aggregatePo(matches: PoEntry[]): PoEntry | undefined {
+  if (matches.length === 0) return undefined;
+  if (matches.length === 1) return matches[0];
+  let latest: Date | null = null;
+  let latestStr = "-";
+  for (const m of matches) {
+    if (m.latestDate && (!latest || m.latestDate > latest)) {
+      latest = m.latestDate;
+      latestStr = m.rawLatestStr;
+    }
+  }
+  return { latestDate: latest, rawLatestStr: latestStr };
+}
+
 function parseStockNum(val: unknown): number {
   if (val === null || val === undefined) return 0;
   const s = String(val).trim();
@@ -138,8 +186,8 @@ export async function processStockUpdateData(
       let allHavePo = true;
 
       for (const compSku of components) {
-        const pos = stockPositions.get(compSku) ?? { stock: 0, plannedIn: 0, plannedOut: 0, effectiveStock: 0, showETA: false };
-        const po = purchaseOrders.get(compSku);
+        const pos = aggregateStockPos(lookupWithSizeFallback(stockPositions, compSku));
+        const po = aggregatePo(lookupWithSizeFallback(purchaseOrders, compSku));
 
         stockAwalVals.push(pos.stock);
         plannedInVals.push(pos.plannedIn);
@@ -193,8 +241,8 @@ export async function processStockUpdateData(
 
     } else {
       // Normal SKU case
-      const pos = stockPositions.get(sku) ?? { stock: 0, plannedIn: 0, plannedOut: 0, effectiveStock: 0, showETA: false };
-      const po = purchaseOrders.get(sku);
+      const pos = aggregateStockPos(lookupWithSizeFallback(stockPositions, sku));
+      const po = aggregatePo(lookupWithSizeFallback(purchaseOrders, sku));
 
       let normalEta = "-";
       if (pos.showETA && po && po.latestDate) {
