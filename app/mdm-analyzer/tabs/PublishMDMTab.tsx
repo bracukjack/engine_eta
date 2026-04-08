@@ -105,21 +105,25 @@ export async function runPublishComparison(
     let stock = "";
 
     if (!pubRow) {
-      // Not found in published list → unpublished
-      publish_status = "unpublished";
+      // SKU not found in Published Products → not_listed
+      publish_status = "not_listed";
     } else {
       let pub: unknown;
       let pubPrice: unknown;
       let pubStock: unknown;
+      let limitedToStores: unknown;
 
       for (const k of Object.keys(pubRow)) {
         const lowerK = k.trim().toLowerCase();
-        if (lowerK === "published") pub = pubRow[k];
+        if (lowerK === "published" || lowerK === "publish status") pub = pubRow[k];
         if (lowerK === "price") pubPrice = pubRow[k];
         if (lowerK === "stockquantity") pubStock = pubRow[k];
+        if (lowerK === "limitedtostores") limitedToStores = pubRow[k];
       }
 
-      publishedPlatform = pub === true || normalize(pub).toLowerCase() === "true";
+      const isPublished = pub === true || normalize(pub).toLowerCase() === "true";
+      const hasB2C = normalize(limitedToStores).toLowerCase().includes("b2c");
+      publishedPlatform = isPublished && hasB2C;
       publish_status = publishedPlatform ? "published" : "unpublished";
       price = normalize(pubPrice);
       stock = normalize(pubStock);
@@ -145,11 +149,12 @@ export async function runPublishComparison(
     }
   });
 
+  const notListedCount = inactive.filter((r) => r.publish_status === "not_listed").length;
   const summary = {
     total: active.length + inactive.length + skipped,
     published: active.length,
-    unpublished: inactive.length,
-    notListed: 0,
+    unpublished: inactive.length - notListedCount,
+    notListed: notListedCount,
     skipped,
   };
 
@@ -231,6 +236,13 @@ function PublishStatusBadge({ status }: { status: PublishStatus }) {
     return (
       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700">
         Published
+      </span>
+    );
+  }
+  if (status === "not_listed") {
+    return (
+      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-gray-100 text-gray-500">
+        Not Listed
       </span>
     );
   }
@@ -476,6 +488,7 @@ export default function PublishMDMTab() {
             { value: "all", label: "All" },
             { value: "published", label: "Published" },
             { value: "unpublished", label: "Unpublished" },
+            { value: "not_listed", label: "Not Listed" },
           ] as { value: "all" | PublishStatus; label: string }[]).map((opt) => (
             <button
               key={opt.value}
@@ -512,6 +525,7 @@ export default function PublishMDMTab() {
           <StatChip label="Total MDM" value={publishSummary.total} />
           <StatChip label="Published" value={publishSummary.published} accent />
           <StatChip label="Unpublished" value={publishSummary.unpublished} />
+          <StatChip label="Not Listed" value={publishSummary.notListed} />
           {matchRate !== null && (
             <StatChip label="Match Rate" value={`${matchRate}%`} accent />
           )}
