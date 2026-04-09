@@ -46,6 +46,15 @@ export function detectChannel(reference: string): string {
   // MANOMANO
   if (upper.includes("MANOMANO")) return "MANOMANO";
 
+  // CONFORAMA
+  if (upper.includes("CONFORAMA")) return "CONFORAMA";
+
+  // Maisons & Objet
+  if (upper.includes("MOM")) return "Maisons & Objet";
+
+  // Metro Market
+  if (upper.includes("METRO")) return "Metro Market";
+
   // Ankorstore vs Faire — check part before first underscore
   const underscoreIdx = ref.indexOf("_");
   if (underscoreIdx > 0) {
