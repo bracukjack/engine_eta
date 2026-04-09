@@ -11,6 +11,9 @@ interface StockUpdateState {
   stockUpdateFileName: string | null;
   stockUpdateBuffer: ArrayBuffer | null;
 
+  logItemFileName: string | null;
+  logItemBuffer: ArrayBuffer | null;
+
   processingState: "idle" | "processing" | "success" | "error";
   error: string | null;
   results: StockUpdateOutputRow[];
@@ -38,6 +41,9 @@ interface StockUpdateState {
   setStockUpdateFile: (filename: string, buffer: ArrayBuffer) => void;
   removeStockUpdateFile: () => void;
 
+  setLogItemFile: (filename: string, buffer: ArrayBuffer) => void;
+  removeLogItemFile: () => void;
+
   setProcessing: () => void;
   setError: (err: string) => void;
   setResults: (data: StockUpdateOutputRow[]) => void;
@@ -54,11 +60,14 @@ export const useStockUpdateStore = create<StockUpdateState>((set) => ({
   stockUpdateFileName: null,
   stockUpdateBuffer: null,
 
+  logItemFileName: null,
+  logItemBuffer: null,
+
   processingState: "idle",
   error: null,
   results: [],
 
-  visibleColumns: ["SKU", "EAN", "Qty", "ETA", "StockAwal", "PlannedIn", "PlannedOut", "ETAAsli"],
+  visibleColumns: ["SKU", "EAN", "Qty", "ETA", "StockAwal", "PlannedIn", "PlannedOut", "ETAAsli", "Class08Desc"],
   toggleColumn: (col) =>
     set((state) => ({
       visibleColumns: state.visibleColumns.includes(col)
@@ -66,7 +75,7 @@ export const useStockUpdateStore = create<StockUpdateState>((set) => ({
         : [...state.visibleColumns, col],
     })),
   showAllColumns: () =>
-    set({ visibleColumns: ["SKU", "EAN", "Qty", "ETA", "StockAwal", "PlannedIn", "PlannedOut", "ETAAsli"] }),
+    set({ visibleColumns: ["SKU", "EAN", "Qty", "ETA", "StockAwal", "PlannedIn", "PlannedOut", "ETAAsli", "Class08Desc"] }),
   hideAllColumns: () => set({ visibleColumns: [] }),
 
   search: "",
@@ -92,6 +101,9 @@ export const useStockUpdateStore = create<StockUpdateState>((set) => ({
   setStockUpdateFile: (filename, buffer) => set({ stockUpdateFileName: filename, stockUpdateBuffer: buffer, error: null }),
   removeStockUpdateFile: () => set({ stockUpdateFileName: null, stockUpdateBuffer: null, processingState: "idle", results: [] }),
 
+  setLogItemFile: (filename, buffer) => set({ logItemFileName: filename, logItemBuffer: buffer, error: null }),
+  removeLogItemFile: () => set({ logItemFileName: null, logItemBuffer: null, processingState: "idle", results: [] }),
+
   setProcessing: () => set({ processingState: "processing", error: null }),
   setError: (error) => set({ processingState: "error", error }),
   setResults: (results) => set({ processingState: "success", results, error: null }),
@@ -103,10 +115,12 @@ export const useStockUpdateStore = create<StockUpdateState>((set) => ({
     poBuffer: null,
     stockUpdateFileName: null,
     stockUpdateBuffer: null,
+    logItemFileName: null,
+    logItemBuffer: null,
     processingState: "idle",
     error: null,
     results: [],
-    visibleColumns: ["SKU", "EAN", "Qty", "ETA", "StockAwal", "PlannedIn", "PlannedOut", "ETAAsli"],
+    visibleColumns: ["SKU", "EAN", "Qty", "ETA", "StockAwal", "PlannedIn", "PlannedOut", "ETAAsli", "Class08Desc"],
     search: "",
     sortColumn: null,
   })

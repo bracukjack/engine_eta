@@ -10,6 +10,7 @@ export interface StockUpdateOutputRow {
   PlannedIn: number | string;
   PlannedOut: number | string;
   ETAAsli: string;
+  Class08Desc: string;
 }
 
 /** 
@@ -104,12 +105,24 @@ function formatDateDisplay(d: Date | null): string {
 export async function processStockUpdateData(
   stockPosBuffer: ArrayBuffer,
   poBuffer: ArrayBuffer,
-  stockUpdateBuffer: ArrayBuffer
+  stockUpdateBuffer: ArrayBuffer,
+  logItemBuffer?: ArrayBuffer
 ): Promise<StockUpdateOutputRow[]> {
   // Parse buffers
   const stockPosRaw = await parseFileBuffer(stockPosBuffer);
   const poRaw = await parseFileBuffer(poBuffer);
   const stockUpdateRaw = await parseFileBuffer(stockUpdateBuffer);
+
+  // 0. Parse LogItemSearch → Code → Class_08Description
+  const class08Map = new Map<string, string>();
+  if (logItemBuffer) {
+    const logItemRaw = await parseFileBuffer(logItemBuffer);
+    for (const row of logItemRaw) {
+      const code = String(row["Code"] ?? "").trim();
+      const desc = String(row["Class_08Description"] ?? "").trim();
+      if (code) class08Map.set(code, desc);
+    }
+  }
 
   // 1. Process Stock Position
   const stockPositions = new Map<string, {
@@ -237,6 +250,7 @@ export async function processStockUpdateData(
           const pd = parseDateValue(val);
           return pd ? formatDateDisplay(pd) : "-";
         }).join(" & "),
+        Class08Desc: components.map(c => class08Map.get(c) ?? "-").join(" & "),
       });
 
     } else {
@@ -259,6 +273,7 @@ export async function processStockUpdateData(
         PlannedIn: pos.plannedIn,
         PlannedOut: pos.plannedOut,
         ETAAsli: po?.latestDate ? formatDateDisplay(po.latestDate) : "-",
+        Class08Desc: class08Map.get(sku) ?? "-",
       });
     }
   }

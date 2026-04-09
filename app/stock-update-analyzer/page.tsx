@@ -29,6 +29,7 @@ const COLUMNS: ColumnDef[] = [
   { key: "PlannedIn", label: "Planned In", flex: 1.5 },
   { key: "PlannedOut", label: "Planned Out", flex: 1.5 },
   { key: "ETAAsli", label: "ETA Asli", flex: 2 },
+  { key: "Class08Desc", label: "Material", flex: 2 },
 ];
 
 function LocalColumnToggle({
@@ -110,13 +111,22 @@ export default function StockUpdateAnalyzerPage() {
     store.setStockUpdateFile(file.name, await file.arrayBuffer());
   }, [store]);
 
+  const handleDropLogItem = useCallback(async (file: File) => {
+    store.setLogItemFile(file.name, await file.arrayBuffer());
+  }, [store]);
+
   const allFilesReady = !!store.stockPosBuffer && !!store.poBuffer && !!store.stockUpdateBuffer;
 
   const handleRunAnalysis = useCallback(async () => {
     if (!allFilesReady) return;
     store.setProcessing();
     try {
-      const results = await processStockUpdateData(store.stockPosBuffer!, store.poBuffer!, store.stockUpdateBuffer!);
+      const results = await processStockUpdateData(
+        store.stockPosBuffer!,
+        store.poBuffer!,
+        store.stockUpdateBuffer!,
+        store.logItemBuffer ?? undefined
+      );
       store.setResults(results);
       setCurrentPage(1);
     } catch (err) {
@@ -260,6 +270,14 @@ export default function StockUpdateAnalyzerPage() {
               isReady={!!store.stockUpdateFileName}
               onDrop={handleDropStockUpdate}
               onClear={store.removeStockUpdateFile}
+            />
+            <StockFileSlot
+              label="Log Item Search"
+              hint=".csv (UTF-16)"
+              fileName={store.logItemFileName}
+              isReady={!!store.logItemFileName}
+              onDrop={handleDropLogItem}
+              onClear={store.removeLogItemFile}
             />
           </div>
         </div>
