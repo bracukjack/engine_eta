@@ -7,6 +7,7 @@ import type {
   StockStatusLabel,
   DateRangePreset,
   BestSellerSortBy,
+  ChannelStat,
 } from "./stock-types";
 
 // ── Channel detection ────────────────────────────────────────────────────────
@@ -449,4 +450,94 @@ export function formatCurrency(value: number): string {
 
 export function formatQty(value: number): string {
   return Math.round(value).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+
+// ── Channel chart colors ─────────────────────────────────────────────────────
+const CHANNEL_CHART_COLORS: Record<string, string> = {
+  "Orderchamp":       "#6366f1",
+  "Lightspeed B2B":   "#0ea5e9",
+  "Shopify":          "#10b981",
+  "Maison du Monde":  "#f59e0b",
+  "Leroy Merlin":     "#84cc16",
+  "Laredoute":        "#ec4899",
+  "Ankorstore":       "#8b5cf6",
+  "VENTEUNIQUE":      "#14b8a6",
+  "VEEPEE":           "#f97316",
+  "KAUFLAND":         "#ef4444",
+  "MANOMANO":         "#06b6d4",
+  "CONFORAMA":        "#65a30d",
+  "Maisons & Objet":  "#db2777",
+  "Metro Market":     "#0891b2",
+  "Faire":            "#a855f7",
+  "Other":            "#94a3b8",
+  "Unknown":          "#cbd5e1",
+};
+
+export function getChannelColor(channel: string): string {
+  return CHANNEL_CHART_COLORS[channel] ?? "#94a3b8";
+}
+
+// ── Aggregate sales by channel ───────────────────────────────────────────────
+export function aggregateByChannel(
+  salesData: SalesRow[],
+  options: {
+    dateStart: Date | null;
+    dateEnd: Date | null;
+    excludedItems: string[];
+  }
+): ChannelStat[] {
+  let filtered = salesData;
+
+  if (options.dateStart) {
+    const startT = options.dateStart.getTime();
+    filtered = filtered.filter((r) => new Date(r.OrderDateParsed).getTime() >= startT);
+  }
+  if (options.dateEnd) {
+    const endOfDay = new Date(options.dateEnd);
+    endOfDay.setHours(23, 59, 59, 999);
+    const endT = endOfDay.getTime();
+    filtered = filtered.filter((r) => new Date(r.OrderDateParsed).getTime() <= endT);
+  }
+  if (options.excludedItems.length > 0) {
+    filtered = filtered.filter((r) => !options.excludedItems.includes(r.Item));
+  }
+
+  const channelMap = new Map<string, {
+    totalQty: number;
+    totalRevenue: number;
+    grossProfit: number;
+    orderRefs: Set<string>;
+    skus: Set<string>;
+  }>();
+
+  for (const row of filtered) {
+    let entry = channelMap.get(row.channel);
+    if (!entry) {
+      entry = { totalQty: 0, totalRevenue: 0, grossProfit: 0, orderRefs: new Set(), skus: new Set() };
+      channelMap.set(row.channel, entry);
+    }
+    entry.totalQty += row.Quantity;
+    entry.totalRevenue += row.NetPrice;
+    entry.grossProfit += row.NetPrice - row.CostPriceFC * row.Quantity;
+    entry.orderRefs.add(row.OrderNumber || row.reference);
+    entry.skus.add(row.Item);
+  }
+
+  const totalRevenue = Array.from(channelMap.values()).reduce((s, e) => s + e.totalRevenue, 0);
+  const totalQty = Array.from(channelMap.values()).reduce((s, e) => s + e.totalQty, 0);
+
+  const stats: ChannelStat[] = Array.from(channelMap.entries()).map(([channel, entry]) => ({
+    channel,
+    totalQty: entry.totalQty,
+    totalRevenue: entry.totalRevenue,
+    grossProfit: entry.grossProfit,
+    orderCount: entry.orderRefs.size,
+    skuCount: entry.skus.size,
+    avgOrderValue: entry.orderRefs.size > 0 ? entry.totalRevenue / entry.orderRefs.size : 0,
+    revenueShare: totalRevenue > 0 ? (entry.totalRevenue / totalRevenue) * 100 : 0,
+    qtyShare: totalQty > 0 ? (entry.totalQty / totalQty) * 100 : 0,
+  }));
+
+  stats.sort((a, b) => b.totalRevenue - a.totalRevenue);
+  return stats;
 }

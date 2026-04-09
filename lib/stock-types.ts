@@ -66,6 +66,18 @@ export interface WeeklyDataPoint {
   grossProfit: number;
 }
 
+export interface ChannelStat {
+  channel: string;
+  totalQty: number;
+  totalRevenue: number;
+  grossProfit: number;
+  orderCount: number;
+  skuCount: number;
+  avgOrderValue: number;
+  revenueShare: number;
+  qtyShare: number;
+}
+
 export type DateRangePreset = "all" | "1w" | "1m" | "3m" | "6m" | "1y" | "custom";
 export type BestSellerSortBy = "totalQty" | "totalRevenue" | "orderCount";
 

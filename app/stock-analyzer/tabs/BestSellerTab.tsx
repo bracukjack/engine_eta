@@ -9,6 +9,7 @@ import {
   deriveCategories,
   computeWeeklyBreakdown,
   getChannels,
+  aggregateByChannel,
 } from "@/lib/bestSeller";
 import type { DateRangePreset, BestSellerSortBy } from "@/lib/stock-types";
 import BestSellerFilters from "../components/BestSellerFilters";
@@ -17,16 +18,18 @@ import BestSellerChart from "../components/BestSellerChart";
 import SKUCompareTable from "../components/SKUCompareTable";
 import BestSellerTable from "../components/BestSellerTable";
 import WeeklyBreakdown from "../components/WeeklyBreakdown";
-import { Upload, BarChart3, TableProperties, CalendarDays, GitCompareArrows } from "lucide-react";
+import ChannelPerformanceTab from "../components/ChannelPerformanceTab";
+import { Upload, BarChart3, TableProperties, CalendarDays, GitCompareArrows, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type InnerTab = "overview" | "skuCompare" | "dataTable" | "weekly";
+type InnerTab = "overview" | "skuCompare" | "dataTable" | "weekly" | "channels";
 
 const INNER_TABS: { key: InnerTab; label: string; icon: React.ElementType }[] = [
   { key: "overview",   label: "Overview",    icon: BarChart3 },
   { key: "skuCompare", label: "SKU Compare", icon: GitCompareArrows },
   { key: "dataTable",  label: "Data Table",  icon: TableProperties },
   { key: "weekly",     label: "Weekly",       icon: CalendarDays },
+  { key: "channels",   label: "Channels",    icon: Store },
 ];
 
 interface BestSellerTabProps {
@@ -119,6 +122,16 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
   // Weekly breakdown
   const weeklyData = useMemo(
     () => computeWeeklyBreakdown(salesData, dateFilter.start, dateFilter.end, excludedItems),
+    [salesData, dateFilter, excludedItems]
+  );
+
+  // Channel stats
+  const channelStats = useMemo(
+    () => aggregateByChannel(salesData, {
+      dateStart: dateFilter.start,
+      dateEnd: dateFilter.end,
+      excludedItems,
+    }),
     [salesData, dateFilter, excludedItems]
   );
 
@@ -246,6 +259,10 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
 
         {activeView === "weekly" && (
           <WeeklyBreakdown data={weeklyData} defaultOpen />
+        )}
+
+        {activeView === "channels" && (
+          <ChannelPerformanceTab data={channelStats} />
         )}
 
         {/* Bottom spacer */}
