@@ -9,6 +9,61 @@ import type {
   BestSellerSortBy,
 } from "./stock-types";
 
+// ── Channel detection ────────────────────────────────────────────────────────
+export function detectChannel(reference: string): string {
+  const ref = reference.trim();
+  if (!ref) return "Unknown";
+
+  const upper = ref.toUpperCase();
+
+  // Orderchamp: starts with OC (includes OCD)
+  if (upper.startsWith("OC")) return "Orderchamp";
+
+  // Lightspeed B2B: starts with BBA
+  if (upper.startsWith("BBA")) return "Lightspeed B2B";
+
+  // Shopify
+  if (upper.includes("SHOPIFY")) return "Shopify";
+
+  // Maison du Monde
+  if (upper.includes("MDM") || upper.includes("MAISONSDUMONDE")) return "Maison du Monde";
+
+  // Leroy Merlin
+  if (upper.includes("LEROYMERLIN") || upper.includes("LEROYMERLINFR")) return "Leroy Merlin";
+
+  // Laredoute
+  if (upper.includes("LAREDOUTE")) return "Laredoute";
+
+  // VENTEUNIQUE
+  if (upper.includes("VENTEUNIQUE")) return "VENTEUNIQUE";
+
+  // VEEPEE
+  if (upper.includes("VEEPEE")) return "VEEPEE";
+
+  // KAUFLAND
+  if (upper.includes("KAUFLAND")) return "KAUFLAND";
+
+  // MANOMANO
+  if (upper.includes("MANOMANO")) return "MANOMANO";
+
+  // Ankorstore vs Faire — check part before first underscore
+  const underscoreIdx = ref.indexOf("_");
+  if (underscoreIdx > 0) {
+    const prefix = ref.slice(0, underscoreIdx);
+    if (/^\d+$/.test(prefix)) return "Ankorstore";
+    if (/^[A-Za-z0-9]+$/.test(prefix) && /[A-Za-z]/.test(prefix) && /\d/.test(prefix)) return "Faire";
+  }
+
+  return "Other";
+}
+
+// ── Get sorted unique channels from sales data ───────────────────────────────
+export function getChannels(salesData: SalesRow[]): string[] {
+  const set = new Set<string>();
+  for (const row of salesData) set.add(row.channel);
+  return Array.from(set).sort();
+}
+
 // ── Parse DD-MM-YYYY → Date ──────────────────────────────────────────────────
 function parseDDMMYYYY(raw: string): Date | null {
   if (!raw) return null;
@@ -36,6 +91,8 @@ export function parseSalesRows(raw: Record<string, unknown>[]): SalesRow[] {
     const dateParsed = parseDDMMYYYY(String(r["Order date"] ?? ""));
     if (!dateParsed) continue; // Skip rows without valid dates
 
+    const reference = String(r["Reference"] ?? r["reference"] ?? "").trim();
+
     result.push({
       Header: header,
       Item: item,
@@ -50,6 +107,8 @@ export function parseSalesRows(raw: Record<string, unknown>[]): SalesRow[] {
       OrderNumber: String(r["Order number"] ?? "").trim(),
       OrderedByCode: String(r["Ordered byCode"] ?? "").trim(),
       OrderedByDescription: String(r["Ordered byDescription"] ?? "").trim(),
+      reference,
+      channel: detectChannel(reference),
     });
   }
 
@@ -147,6 +206,7 @@ export function aggregateBestSellers(
     topN: number | "all";
     sortBy: BestSellerSortBy;
     excludedItems?: string[];
+    channels?: string[];
   }
 ): BestSellerItem[] {
   // Build stock lookup
@@ -185,10 +245,14 @@ export function aggregateBestSellers(
     totalGrossProfit: number;
     orderNumbers: Set<string>;
     unitPrices: number[];
+    channels: Set<string>;
   }>();
 
   for (const row of filtered) {
     if (filters.excludedItems && filters.excludedItems.includes(row.Item)) {
+      continue;
+    }
+    if (filters.channels && filters.channels.length > 0 && !filters.channels.includes(row.channel)) {
       continue;
     }
     let agg = aggMap.get(row.Item);
@@ -201,6 +265,7 @@ export function aggregateBestSellers(
         totalGrossProfit: 0,
         orderNumbers: new Set(),
         unitPrices: [],
+        channels: new Set(),
       };
       aggMap.set(row.Item, agg);
     }
@@ -209,6 +274,7 @@ export function aggregateBestSellers(
     agg.totalGrossProfit += (row.NetPrice - (row.CostPriceFC * row.Quantity));
     agg.orderNumbers.add(row.OrderNumber);
     agg.unitPrices.push(row.UnitPrice);
+    agg.channels.add(row.channel);
     // Update product name if better
     if (!agg.productName && row.ItemDescription) {
       agg.productName = row.ItemDescription;
@@ -238,6 +304,7 @@ export function aggregateBestSellers(
       plannedIn: stockRow ? stockRow.PlannedInStock : null,
       plannedOut: stockRow ? stockRow.PlannedOutStock : null,
       stockStatus: computeStockStatus(agg.totalQty, currentStock),
+      channels: Array.from(agg.channels).sort(),
     });
   }
 

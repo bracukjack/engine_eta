@@ -20,6 +20,9 @@ interface BestSellerFiltersProps {
   excludedItems: string[];
   excludedItemsOptions: { code: string; name: string }[];
   onExcludedItemsChange: (items: string[]) => void;
+  channels: string[];
+  selectedChannels: string[];
+  onChannelChange: (channels: string[]) => void;
   onTopNChange: (n: number | "all") => void;
   onSortByChange: (s: BestSellerSortBy) => void;
   disabledTopN?: boolean;
@@ -129,6 +132,119 @@ function CategoryDropdown({
                     {checked && <Check size={10} strokeWidth={3} />}
                   </span>
                   <span className="text-primary truncate">{cat}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const CHANNEL_COLORS: Record<string, string> = {
+  "Orderchamp":      "bg-blue-100 text-blue-700",
+  "Lightspeed B2B":  "bg-indigo-100 text-indigo-700",
+  "Shopify":         "bg-green-100 text-green-700",
+  "Maison du Monde": "bg-purple-100 text-purple-700",
+  "Leroy Merlin":    "bg-teal-100 text-teal-700",
+  "Laredoute":       "bg-rose-100 text-rose-700",
+  "Ankorstore":      "bg-orange-100 text-orange-700",
+  "VENTEUNIQUE":     "bg-sky-100 text-sky-700",
+  "VEEPEE":          "bg-violet-100 text-violet-700",
+  "KAUFLAND":        "bg-red-100 text-red-700",
+  "MANOMANO":        "bg-yellow-100 text-yellow-700",
+  "Faire":           "bg-emerald-100 text-emerald-700",
+  "Other":           "bg-slate-100 text-slate-500",
+  "Unknown":         "bg-slate-100 text-slate-400",
+};
+
+export function getChannelColorClass(channel: string): string {
+  return CHANNEL_COLORS[channel] ?? "bg-slate-100 text-slate-500";
+}
+
+function ChannelDropdown({
+  channels,
+  selected,
+  onChange,
+}: {
+  channels: string[];
+  selected: string[];
+  onChange: (channels: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (
+        panelRef.current && !panelRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  const toggle = (ch: string) =>
+    onChange(selected.includes(ch) ? selected.filter((c) => c !== ch) : [...selected, ch]);
+
+  return (
+    <div className="relative">
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex items-center gap-1.5 h-8 px-2.5 rounded-md border text-[12px] transition-colors cursor-pointer",
+          selected.length > 0
+            ? "border-accent bg-accent/5 text-accent"
+            : "border-edge bg-white text-muted hover:text-primary hover:border-primary/30"
+        )}
+      >
+        <Filter size={12} />
+        Channel
+        {selected.length > 0 && (
+          <>
+            <span className="bg-accent text-white text-[10px] font-bold rounded-full px-1.5 py-0.5 leading-none">
+              {selected.length}
+            </span>
+            <span
+              onClick={(e) => { e.stopPropagation(); onChange([]); }}
+              className="hover:bg-accent/20 rounded p-0.5"
+            >
+              <X size={10} />
+            </span>
+          </>
+        )}
+      </button>
+      {open && (
+        <div ref={panelRef} className="absolute top-full left-0 mt-1 z-50 w-52 bg-white border border-edge rounded-lg shadow-lg py-1">
+          <div className="flex items-center gap-1 px-2 py-1.5 border-b border-edge">
+            <button onClick={() => onChange(channels)} className="text-[11px] text-accent hover:underline cursor-pointer">Select All</button>
+            <span className="text-muted text-[11px]">·</span>
+            <button onClick={() => onChange([])} className="text-[11px] text-accent hover:underline cursor-pointer">Clear All</button>
+          </div>
+          <div className="max-h-64 overflow-y-auto py-1">
+            {channels.map((ch) => {
+              const checked = selected.includes(ch);
+              return (
+                <button
+                  key={ch}
+                  onClick={() => toggle(ch)}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <span className={cn(
+                    "flex items-center justify-center w-4 h-4 rounded border shrink-0",
+                    checked ? "bg-accent border-accent text-white" : "border-edge bg-white"
+                  )}>
+                    {checked && <Check size={10} strokeWidth={3} />}
+                  </span>
+                  <span className={cn(
+                    "text-[11px] font-medium px-1.5 py-0.5 rounded-full leading-none",
+                    getChannelColorClass(ch)
+                  )}>{ch}</span>
                 </button>
               );
             })}
@@ -263,6 +379,9 @@ export default function BestSellerFilters({
   excludedItems,
   excludedItemsOptions,
   onExcludedItemsChange,
+  channels,
+  selectedChannels,
+  onChannelChange,
   onTopNChange,
   onSortByChange,
   disabledTopN,
@@ -316,6 +435,15 @@ export default function BestSellerFilters({
           categories={categories}
           selected={selectedCategories}
           onChange={onCategoryChange}
+        />
+      )}
+
+      {/* Channel filter */}
+      {channels.length > 0 && (
+        <ChannelDropdown
+          channels={channels}
+          selected={selectedChannels}
+          onChange={onChannelChange}
         />
       )}
 

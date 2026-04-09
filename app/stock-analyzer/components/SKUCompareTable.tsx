@@ -3,6 +3,7 @@
 import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { formatCurrency, formatQty } from "@/lib/bestSeller";
+import { getChannelColorClass } from "./BestSellerFilters";
 import type { BestSellerItem, StockStatusLabel } from "@/lib/stock-types";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -68,11 +69,12 @@ export default function SKUCompareTable({ items, hasStockData }: SKUCompareTable
   const columns = [
     { key: "itemCode", label: "Item Code", flex: 1.5 },
     { key: "productName", label: "Product Name", flex: 3 },
-    { key: "category", label: "Category", flex: 2 },
+    { key: "category", label: "Category", flex: 1.8 },
     { key: "totalQty", label: "Qty Sold", flex: 1, numeric: true },
     { key: "totalRevenue", label: "Revenue", flex: 1.2, numeric: true },
     { key: "currentStock", label: "Current Stock", flex: 1, numeric: true },
     { key: "stockStatus", label: "Stock Status", flex: 1.2 },
+    { key: "channels", label: "Channels", flex: 1.8 },
   ];
 
   const totalFlex = columns.reduce((s, c) => s + c.flex, 0);
@@ -129,6 +131,16 @@ export default function SKUCompareTable({ items, hasStockData }: SKUCompareTable
                   </td>
                   <td className="px-3 py-1.5">
                     <StockStatusBadge status={item.stockStatus} />
+                  </td>
+                  <td className="px-3 py-1.5">
+                    <div className="flex flex-wrap gap-0.5">
+                      {item.channels.map((ch) => (
+                        <span key={ch} className={cn("inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none", getChannelColorClass(ch))}>
+                          {ch}
+                        </span>
+                      ))}
+                      {item.channels.length === 0 && <span className="text-[11px] text-muted">—</span>}
+                    </div>
                   </td>
                 </tr>
               ))

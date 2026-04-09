@@ -35,6 +35,8 @@ export interface SalesRow {
   OrderNumber: string;
   OrderedByCode: string;
   OrderedByDescription: string;
+  reference: string;
+  channel: string;
 }
 
 export type StockStatusLabel = "Sold Out" | "Low Stock" | "Healthy" | "Overstocked" | "N/A";
@@ -53,6 +55,7 @@ export interface BestSellerItem {
   plannedIn: number | null;
   plannedOut: number | null;
   stockStatus: StockStatusLabel;
+  channels: string[];
 }
 
 export interface WeeklyDataPoint {

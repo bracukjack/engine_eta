@@ -8,6 +8,7 @@ import {
   getDateFilterRange,
   deriveCategories,
   computeWeeklyBreakdown,
+  getChannels,
 } from "@/lib/bestSeller";
 import type { DateRangePreset, BestSellerSortBy } from "@/lib/stock-types";
 import BestSellerFilters from "../components/BestSellerFilters";
@@ -54,6 +55,7 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
   const [topN, setTopN] = useState<number | "all">(10);
   const [sortBy, setSortBy] = useState<BestSellerSortBy>("totalQty");
   const [excludedItems, setExcludedItems] = useState<string[]>([]);
+  const [channelFilter, setChannelFilter] = useState<string[]>([]);
 
   // Deriving excluded item options
   const excludedItemsOptions = useMemo(() => {
@@ -81,6 +83,9 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
     [salesData, stockRows]
   );
 
+  // Derive channels from sales data
+  const channels = useMemo(() => getChannels(salesData), [salesData]);
+
   // Aggregate best sellers
   const bestSellers = useMemo(
     () =>
@@ -91,8 +96,9 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
         topN,
         sortBy,
         excludedItems,
+        channels: channelFilter,
       }),
-    [salesData, stockRows, dateFilter, categoryFilter, topN, sortBy, excludedItems]
+    [salesData, stockRows, dateFilter, categoryFilter, topN, sortBy, excludedItems, channelFilter]
   );
 
   // Full results without topN limit (for the data table)
@@ -105,8 +111,9 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
         topN: "all",
         sortBy,
         excludedItems,
+        channels: channelFilter,
       }),
-    [salesData, stockRows, dateFilter, categoryFilter, sortBy, excludedItems]
+    [salesData, stockRows, dateFilter, categoryFilter, sortBy, excludedItems, channelFilter]
   );
 
   // Weekly breakdown
@@ -180,6 +187,9 @@ export default function BestSellerTab({ innerView, onInnerViewChange }: BestSell
         excludedItems={excludedItems}
         excludedItemsOptions={excludedItemsOptions}
         onExcludedItemsChange={setExcludedItems}
+        channels={channels}
+        selectedChannels={channelFilter}
+        onChannelChange={setChannelFilter}
         onTopNChange={setTopN}
         onSortByChange={setSortBy}
         disabledTopN={activeView === "dataTable" || activeView === "weekly"}

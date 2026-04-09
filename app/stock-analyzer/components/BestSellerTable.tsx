@@ -4,6 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { cn, buildSearchMatcher, exportToExcel, exportToCsv } from "@/lib/utils";
 import { formatCurrency, formatQty } from "@/lib/bestSeller";
 import { showCopiedToast } from "./shared";
+import { getChannelColorClass } from "./BestSellerFilters";
 import type { BestSellerItem, StockStatusLabel } from "@/lib/stock-types";
 import {
   Search, X, ArrowUp, ArrowDown, ArrowUpDown,
@@ -48,6 +49,7 @@ const COLUMNS: { key: SortKey; label: string; flex: number; numeric?: boolean }[
   { key: "orderCount", label: "Orders", flex: 0.7, numeric: true },
   { key: "currentStock", label: "Stock", flex: 0.7, numeric: true },
   { key: "stockStatus", label: "Status", flex: 0.9 },
+  { key: "channels", label: "Channels", flex: 1.6 },
 ];
 
 const PAGE_SIZES: (number | "all")[] = [50, 100, 200, 500, 1000, "all"];
@@ -375,6 +377,18 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
                   {visibleCols.includes("stockStatus") && (
                     <td className="px-3 py-1.5">
                       <StockStatusBadge status={row.stockStatus} />
+                    </td>
+                  )}
+                  {visibleCols.includes("channels") && (
+                    <td className="px-3 py-1.5">
+                      <div className="flex flex-wrap gap-0.5">
+                        {row.channels.map((ch) => (
+                          <span key={ch} className={cn("inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none", getChannelColorClass(ch))}>
+                            {ch}
+                          </span>
+                        ))}
+                        {row.channels.length === 0 && <span className="text-[11px] text-muted">—</span>}
+                      </div>
                     </td>
                   )}
                 </tr>
