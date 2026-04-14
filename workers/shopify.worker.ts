@@ -132,12 +132,14 @@ ctx.onmessage = (e: MessageEvent) => {
 
     const plannedInMap  = new Map<string, number>();
     const plannedOutMap = new Map<string, number>();
+    const stockQtyMap   = new Map<string, number>(); // key: lowercase ItemCode
     for (const row of stockRows) {
       const code = String(row["ItemCode"] ?? "").trim();
       if (!code) continue;
 
       plannedInMap.set(code,  parseNum(row["PlannedInStock"])  ?? 0);
       plannedOutMap.set(code, parseNum(row["PlannedOutStock"]) ?? 0);
+      stockQtyMap.set(code.toLowerCase(), parseNum(row["Stock"]) ?? 0);
     }
 
     // ── STEP 3: Purchase Orders ────────────────────────────────────────
@@ -206,9 +208,10 @@ ctx.onmessage = (e: MessageEvent) => {
         continue;
 
       const sku = String(skuRaw).trim();
-      const variantQty = parseNum(row["Variant Inventory Qty"]) ?? 0;
+      const stockQty   = stockQtyMap.get(sku.toLowerCase()) ?? 0;
       const plannedIn  = plannedInMap.get(sku)  ?? 0;
       const plannedOut = plannedOutMap.get(sku) ?? 0;
+      const variantQty = Math.max(0, stockQty - plannedOut);
 
       // GOAL 1 & 2 — Status + Policy
       let status: "active" | "draft";
