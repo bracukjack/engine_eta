@@ -120,7 +120,7 @@ export async function processStockUpdateData(
     for (const row of logItemRaw) {
       const code = String(row["Code"] ?? "").trim();
       const desc = String(row["Class_08Description"] ?? "").trim();
-      if (code) class08Map.set(code, desc);
+      if (code) class08Map.set(code.toUpperCase(), desc);
     }
   }
 
@@ -134,7 +134,7 @@ export async function processStockUpdateData(
   }>();
 
   for (const row of stockPosRaw) {
-    const itemCode = String(row["ItemCode"] ?? row["Code"] ?? "").trim();
+    const itemCode = String(row["ItemCode"] ?? "").trim().toUpperCase();
     if (!itemCode) continue;
 
     const stock = parseStockNum(row["Stock"]);
@@ -157,7 +157,7 @@ export async function processStockUpdateData(
   const purchaseOrders = new Map<string, { latestDate: Date | null; rawLatestStr: string }>();
 
   for (const row of poRaw) {
-    const item = String(row["Item"] ?? "").trim();
+    const item = String(row["Item"] ?? "").trim().toUpperCase();
     if (!item) continue;
 
     const receiptDateStr = String(row["Receipt date"] ?? "").trim();
@@ -199,8 +199,8 @@ export async function processStockUpdateData(
       let allHavePo = true;
 
       for (const compSku of components) {
-        const pos = aggregateStockPos(lookupWithSizeFallback(stockPositions, compSku));
-        const po = aggregatePo(lookupWithSizeFallback(purchaseOrders, compSku));
+        const pos = aggregateStockPos(lookupWithSizeFallback(stockPositions, compSku.toUpperCase()));
+        const po = aggregatePo(lookupWithSizeFallback(purchaseOrders, compSku.toUpperCase()));
 
         stockAwalVals.push(pos.stock);
         plannedInVals.push(pos.plannedIn);
@@ -250,13 +250,13 @@ export async function processStockUpdateData(
           const pd = parseDateValue(val);
           return pd ? formatDateDisplay(pd) : "-";
         }).join(" & "),
-        Class08Desc: components.map(c => class08Map.get(c) ?? "-").join(" & "),
+        Class08Desc: components.map(c => class08Map.get(c.toUpperCase()) ?? "-").join(" & "),
       });
 
     } else {
       // Normal SKU case
-      const pos = aggregateStockPos(lookupWithSizeFallback(stockPositions, sku));
-      const po = aggregatePo(lookupWithSizeFallback(purchaseOrders, sku));
+      const pos = aggregateStockPos(lookupWithSizeFallback(stockPositions, sku.toUpperCase()));
+      const po = aggregatePo(lookupWithSizeFallback(purchaseOrders, sku.toUpperCase()));
 
       let normalEta = "-";
       if (pos.showETA && po && po.latestDate) {
@@ -273,7 +273,7 @@ export async function processStockUpdateData(
         PlannedIn: pos.plannedIn,
         PlannedOut: pos.plannedOut,
         ETAAsli: po?.latestDate ? formatDateDisplay(po.latestDate) : "-",
-        Class08Desc: class08Map.get(sku) ?? "-",
+        Class08Desc: class08Map.get(sku.toUpperCase()) ?? "-",
       });
     }
   }

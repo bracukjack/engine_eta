@@ -242,7 +242,6 @@ ctx.onmessage = (e: MessageEvent) => {
       const etaFinal =
         etaFromPo ?? (existingEta && existingEta !== "" ? existingEta : null);
 
-      // GOAL 4 — Pricing
       const itemInfo = itemMap.get(sku);
       let variantPrice: number | null;
       let compareAtPrice: number | null;
