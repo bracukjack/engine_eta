@@ -270,8 +270,8 @@ function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value
     return <span className="font-mono" style={{ fontSize }}>{formatted || "0,00"}</span>;
   }
   if (INTEGER_OUTPUT_COLUMNS.has(column)) {
-    const formatted = formatInteger(value as number | null);
-    return <span className="font-mono" style={{ fontSize }}>{formatted !== "" ? formatted : "0"}</span>;
+    const num = value as number | null;
+    return <span className="font-mono" style={{ fontSize }}>{num !== null && num !== undefined ? Math.round(num) : "0"}</span>;
   }
   if (value === null || value === undefined || value === "") {
     return <span className="text-muted/50">—</span>;

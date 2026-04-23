@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import type { FileKey, OutputRow } from "@/lib/types";
 import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS } from "@/lib/types";
 import { parseFileBuffer, previewFileBuffer, getXLSX } from "@/lib/parsers";
-import { formatPrice, formatInteger, buildSearchMatcher } from "@/lib/utils";
+import { formatPrice, buildSearchMatcher } from "@/lib/utils";
 import { FileDropzone } from "@/components/file-dropzone/file-dropzone";
 import { StatChip } from "@/components/status-badge/status-badge";
 import { ColumnToggle } from "@/components/column-toggle/column-toggle";
@@ -214,7 +214,8 @@ function ShopifyProcessorInner() {
         } else if (PRICE_COLUMNS.has(key)) {
           obj[exportKey] = formatPrice(row[key] as number | null) || 0;
         } else if (INTEGER_OUTPUT_COLUMNS.has(key)) {
-          obj[exportKey] = formatInteger(row[key] as number | null) || 0;
+          const n = row[key] as number | null;
+          obj[exportKey] = n !== null && n !== undefined ? Math.round(n) : 0;
         } else {
           obj[exportKey] = row[key];
         }
@@ -265,7 +266,7 @@ function ShopifyProcessorInner() {
         for (const key of visibleColumns) {
           if (key === "No") obj[key] = startRow + j;
           else if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
-          else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || 0;
+          else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[key] = n !== null && n !== undefined ? Math.round(n) : 0; }
           else obj[key] = row[key];
         }
         return obj;
@@ -330,7 +331,7 @@ function ShopifyProcessorInner() {
         for (const key of visibleColumns) {
           if (key === "No") obj[key] = startRow + j;
           else if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
-          else if (INTEGER_OUTPUT_COLUMNS.has(key)) obj[key] = formatInteger(row[key] as number | null) || 0;
+          else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[key] = n !== null && n !== undefined ? Math.round(n) : 0; }
           else obj[key] = row[key];
         }
         return obj;
