@@ -68,6 +68,10 @@ interface AppStore {
   setExportRowLimit: (l: ExportRowLimit) => void;
   setCustomRowLimit: (n: number) => void;
 
+  // ── Exclude SKUs ───────────────────────────────────────────────────
+  excludeSkus: string;
+  setExcludeSkus: (s: string) => void;
+
   // ── Batch / Split Export ───────────────────────────────────────────
   splitMode: boolean;
   rowsPerFile: number;
@@ -184,6 +188,10 @@ export const useAppStore = create<AppStore>()(
   customRowLimit: 50,
   setExportRowLimit: (l) => set({ exportRowLimit: l }),
   setCustomRowLimit: (n) => set({ customRowLimit: n }),
+
+  // Exclude SKUs
+  excludeSkus: "",
+  setExcludeSkus: (s) => set({ excludeSkus: s }),
 
   // Batch / Split Export
   splitMode: false,

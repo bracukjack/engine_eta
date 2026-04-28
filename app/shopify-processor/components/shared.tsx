@@ -66,6 +66,8 @@ export function ExportDropdown({
   batchProgress,
   onSetSplitMode,
   onSetRowsPerFile,
+  excludeSkus,
+  onSetExcludeSkus,
 }: {
   onExportXlsx: () => void;
   onExportCsv: () => void;
@@ -81,6 +83,8 @@ export function ExportDropdown({
   batchProgress: BatchProgress | null;
   onSetSplitMode: (v: boolean) => void;
   onSetRowsPerFile: (n: number) => void;
+  excludeSkus: string;
+  onSetExcludeSkus: (s: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -199,6 +203,22 @@ export function ExportDropdown({
                   <span className="text-[10px] text-muted">→ {Math.ceil(rowCount / rowsPerFile)} files</span>
                 )}
               </div>
+            )}
+          </div>
+
+          <div className="px-3 py-2 border-b border-edge">
+            <span className="text-[10px] text-muted uppercase tracking-wider font-semibold">Exclude SKUs</span>
+            <input
+              type="text"
+              value={excludeSkus}
+              onChange={(e) => onSetExcludeSkus(e.target.value)}
+              placeholder="SKU1, SKU2, ..."
+              className="mt-1 w-full bg-white border border-edge rounded px-2 py-1 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent/50 placeholder:text-muted/50"
+            />
+            {excludeSkus.trim() && (
+              <span className="text-[10px] text-muted/70 mt-0.5 block">
+                {excludeSkus.split(",").map((s) => s.trim()).filter(Boolean).length} SKU(s) excluded
+              </span>
             )}
           </div>
 

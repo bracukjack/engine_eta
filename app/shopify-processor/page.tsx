@@ -89,6 +89,9 @@ function ShopifyProcessorInner() {
   const setRowsPerFile = useAppStore((s) => s.setRowsPerFile);
   const setBatchProgress = useAppStore((s) => s.setBatchProgress);
 
+  const excludeSkus = useAppStore((s) => s.excludeSkus);
+  const setExcludeSkus = useAppStore((s) => s.setExcludeSkus);
+
   const [exportSuccessMsg, setExportSuccessMsg] = useState<string | null>(null);
   useEffect(() => {
     if (!exportSuccessMsg) return;
@@ -204,7 +207,12 @@ function ShopifyProcessorInner() {
   }, [canRun, files, startProcessing, setError]);
 
   const buildExportData = useCallback(() => {
-    const rows = sortedRows.slice(0, exportLimit);
+    const excludeSet = new Set(
+      excludeSkus.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean)
+    );
+    const rows = sortedRows
+      .filter((r) => !excludeSet.has(r["Variant SKU"].toUpperCase()))
+      .slice(0, exportLimit);
     return rows.map((row, i) => {
       const obj: Record<string, unknown> = {};
       for (const key of visibleColumns) {
@@ -222,7 +230,7 @@ function ShopifyProcessorInner() {
       }
       return obj;
     });
-  }, [sortedRows, exportLimit, visibleColumns]);
+  }, [sortedRows, exportLimit, visibleColumns, excludeSkus]);
 
   const handleExportXlsx = useCallback(async () => {
     const date = new Date().toISOString().slice(0, 10);
@@ -245,7 +253,9 @@ function ShopifyProcessorInner() {
       return;
     }
 
-    const rows = sortedRows.slice(0, exportLimit);
+    const rows = sortedRows
+      .filter((r) => !new Set(excludeSkus.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean)).has(r["Variant SKU"].toUpperCase()))
+      .slice(0, exportLimit);
     if (rows.length === 0) return;
     const { default: JSZip } = await import("jszip");
     const chunks = chunkArray(rows, rowsPerFile);
@@ -289,7 +299,7 @@ function ShopifyProcessorInner() {
     a.download = `shopify_processed_${date}_${totalFiles}files_${totalRows}rows.zip`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg]);
+  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg, excludeSkus]);
 
   const handleExportCsv = useCallback(async () => {
     const date = new Date().toISOString().slice(0, 10);
@@ -310,7 +320,9 @@ function ShopifyProcessorInner() {
       return;
     }
 
-    const rows = sortedRows.slice(0, exportLimit);
+    const rows = sortedRows
+      .filter((r) => !new Set(excludeSkus.split(",").map((s) => s.trim().toUpperCase()).filter(Boolean)).has(r["Variant SKU"].toUpperCase()))
+      .slice(0, exportLimit);
     if (rows.length === 0) return;
     const { default: JSZip } = await import("jszip");
     const chunks = chunkArray(rows, rowsPerFile);
@@ -351,7 +363,7 @@ function ShopifyProcessorInner() {
     a.download = `shopify_processed_${date}_${totalFiles}files_${totalRows}rows.zip`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg]);
+  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg, excludeSkus]);
 
   // Count ready files
   const readyCount = useMemo(
@@ -448,6 +460,8 @@ function ShopifyProcessorInner() {
                 batchProgress={batchProgress}
                 onSetSplitMode={setSplitMode}
                 onSetRowsPerFile={setRowsPerFile}
+                excludeSkus={excludeSkus}
+                onSetExcludeSkus={setExcludeSkus}
               />
               {exportSuccessMsg && (
                 <span className="text-[11px] text-green-600 font-mono">✓ {exportSuccessMsg}</span>

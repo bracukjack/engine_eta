@@ -151,7 +151,8 @@ ctx.onmessage = (e: MessageEvent) => {
       if (!item) continue;
 
       const receiptDate = parseDMY(row["Receipt date"]);
-      if (!receiptDate || receiptDate < today) continue;
+      // Only keep dates strictly after today (not today itself, not past dates)
+      if (!receiptDate || receiptDate <= today) continue;
 
       const existing = etaMap.get(item);
       if (!existing || receiptDate < existing) {
@@ -208,6 +209,33 @@ ctx.onmessage = (e: MessageEvent) => {
         continue;
 
       const sku = String(skuRaw).trim();
+      const handle = String(row["Handle"] ?? "").trim();
+
+      // ── GIFTCARD special rule ────────────────────────────────────────
+      if (sku.toUpperCase() === "GIFTCARD") {
+        const itemInfo = itemMap.get(sku);
+        output.push({
+          No: 0,
+          Handle: handle,
+          Title: String(row["Title"] ?? ""),
+          "Variant SKU": sku,
+          "Variant Quantity": 999,
+          Status: "active",
+          Published: "TRUE",
+          "Variant Price": 25,
+          "Variant Compare at Price": null,
+          ETA: null,
+          "Variant Inventory Policy": "deny",
+          PlannedInStock: 0,
+          PlannedOutStock: 0,
+          "Discount %": null,
+          "Cost per item": itemInfo?.salesNum ?? null,
+          Reference: null,
+          B2C: "No" as const,
+        });
+        continue;
+      }
+
       const stockQty   = stockQtyMap.get(sku.toLowerCase()) ?? 0;
       const plannedIn  = plannedInMap.get(sku)  ?? 0;
       const plannedOut = plannedOutMap.get(sku) ?? 0;
@@ -238,9 +266,30 @@ ctx.onmessage = (e: MessageEvent) => {
         const yyyy = etaDate.getFullYear();
         etaFromPo = `${dd}/${mm}/${yyyy}`;
       }
-      const existingEta = row[etaCol] ? String(row[etaCol]).trim() : null;
-      const etaFinal =
-        etaFromPo ?? (existingEta && existingEta !== "" ? existingEta : null);
+      const existingEtaRaw = row[etaCol] ? String(row[etaCol]).trim() : null;
+      // Validate existingEta: only keep if the date is strictly after today.
+      // Format expected: DD/MM/YYYY (same format written by this worker).
+      let existingEta: string | null = null;
+      if (existingEtaRaw) {
+        const parts = existingEtaRaw.split("/");
+        if (parts.length === 3) {
+          const [ed, em, ey] = parts.map(Number);
+          if (ed && em && ey) {
+            const existingDate = new Date(ey, em - 1, ed);
+            if (!isNaN(existingDate.getTime()) && existingDate > today) {
+              existingEta = existingEtaRaw;
+            }
+          }
+        }
+      }
+
+      // Only publish ETA when net available stock (current + incoming - outgoing) is positive.
+      // If plannedOut > stockQty + plannedIn, the incoming stock is fully consumed by
+      // committed outgoing orders — no stock will actually be available for customers.
+      const netAvailable = stockQty + plannedIn - plannedOut;
+      const etaFinal = netAvailable > 0
+        ? (etaFromPo ?? (existingEta && existingEta !== "" ? existingEta : null))
+        : null;
 
       const itemInfo = itemMap.get(sku);
       let variantPrice: number | null;
@@ -265,6 +314,7 @@ ctx.onmessage = (e: MessageEvent) => {
 
       output.push({
         No: 0,
+        Handle: handle,
         Title: String(row["Title"] ?? ""),
         "Variant SKU": sku,
         "Variant Quantity": Math.round(variantQty),
@@ -329,6 +379,8 @@ ctx.onmessage = (e: MessageEvent) => {
     // 6B: Apply B2C override + set informational B2C column
     for (const row of output) {
       const sku = String(row["Variant SKU"]).trim();
+      // GIFTCARD is always active — skip B2C override
+      if (sku.toUpperCase() === "GIFTCARD") continue;
       if (b2cSkus.has(sku)) {
         row["B2C"] = "Yes";
       } else {

@@ -35,6 +35,7 @@ export type WorkerResponse = WorkerProgress | WorkerResult | WorkerError;
 
 export interface OutputRow {
   No: number;
+  Handle: string;
   Title: string;
   "Variant SKU": string;
   "Variant Quantity": number;
@@ -67,6 +68,7 @@ export interface Summary {
 
 export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number; }[] = [
   { key: "No", label: "No", flex: 0.5 },
+  { key: "Handle", label: "Handle", flex: 2 },
   { key: "Title", label: "Title", flex: 3 },
   { key: "Variant SKU", label: "SKU", flex: 2 },
   { key: "Variant Quantity", label: "Qty", flex: 1 },
@@ -77,7 +79,8 @@ export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number
   { key: "Variant Compare at Price", label: "Compare Price", flex: 1.5 },
   { key: "ETA", label: "ETA", flex: 1.5 },
   { key: "Variant Inventory Policy", label: "Policy", flex: 1.5 },
-  { key: "PlannedInStock", label: "Planned", flex: 1 },
+  { key: "PlannedInStock", label: "Plan In", flex: 1 },
+  { key: "PlannedOutStock", label: "Plan Out", flex: 1 },
   { key: "Discount %", label: "Disc %", flex: 1, },
   { key: "Cost per item", label: "Cost", flex: 1 },
 ];
@@ -91,6 +94,7 @@ export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
 export const INTEGER_OUTPUT_COLUMNS: Set<keyof OutputRow> = new Set([
   "Variant Quantity",
   "PlannedInStock",
+  "PlannedOutStock",
 ]);
 
 export type TableSize = "S" | "M" | "L";
