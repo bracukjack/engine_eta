@@ -232,6 +232,7 @@ ctx.onmessage = (e: MessageEvent) => {
           "Cost per item": itemInfo?.salesNum ?? null,
           Reference: null,
           B2C: "No" as const,
+          Tags: String(row["Tags"] ?? "").trim() || null,
         });
         continue;
       }
@@ -312,6 +313,18 @@ ctx.onmessage = (e: MessageEvent) => {
       const refs = refsMap.get(sku);
       const reference = refs && refs.length > 0 ? refs.join("\n") : null;
 
+      // ── Tags ─────────────────────────────────────────────────────────
+      // Start from existing Shopify tags (separator: ", ")
+      const rawTags = String(row["Tags"] ?? "").trim();
+      const existingTags = rawTags !== ""
+        ? rawTags.split(",").map((t) => t.trim()).filter(Boolean)
+        : [];
+      // Add "Sale" tag if there is a compare-at price (i.e. product is discounted)
+      if (compareAtPrice !== null && !existingTags.includes("Sale")) {
+        existingTags.push("Sale");
+      }
+      const tagsOut = existingTags.length > 0 ? existingTags.join(", ") : null;
+
       output.push({
         No: 0,
         Handle: handle,
@@ -330,6 +343,7 @@ ctx.onmessage = (e: MessageEvent) => {
         "Cost per item": costPerItem,
         Reference: reference,
         B2C: "No" as const,
+        Tags: tagsOut,
       });
     }
 
