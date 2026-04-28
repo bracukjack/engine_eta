@@ -360,19 +360,24 @@ ctx.onmessage = (e: MessageEvent) => {
     progress("Published", 92, "Building B2C SKU set...");
 
     const b2cSkus = new Set<string>();
+    const allChannelsSkus = new Set<string>(); // LimitedToStores empty = all channels active
 
     if (skuColumn) {
       for (const row of publishedRows) {
-        const limitedTo = String(row["LimitedToStores"] ?? "").toLowerCase();
-        if (!limitedTo.includes("b2c")) continue;
         const sku = String(row[skuColumn] ?? "").trim();
-        if (sku !== "") b2cSkus.add(sku);
+        if (sku === "") continue;
+        const limitedTo = String(row["LimitedToStores"] ?? "").trim();
+        if (limitedTo === "") {
+          allChannelsSkus.add(sku);
+        } else if (limitedTo.toLowerCase().includes("b2c")) {
+          b2cSkus.add(sku);
+        }
       }
     }
 
-    progress("Published", 95, `Found ${b2cSkus.size} B2C SKUs`);
+    progress("Published", 95, `Found ${b2cSkus.size} B2C SKUs, ${allChannelsSkus.size} all-channel SKUs`);
 
-    if (b2cSkus.size === 0) {
+    if (b2cSkus.size === 0 && allChannelsSkus.size === 0) {
       progress("Published", 96, "⚠ No B2C data found — all SKUs will be draft");
     }
 
@@ -382,8 +387,13 @@ ctx.onmessage = (e: MessageEvent) => {
       // GIFTCARD is always active — skip B2C override
       if (sku.toUpperCase() === "GIFTCARD") continue;
       if (b2cSkus.has(sku)) {
+        // LimitedToStores contains B2C → keep stock-based status, mark as B2C
+        row["B2C"] = "Yes";
+      } else if (allChannelsSkus.has(sku)) {
+        // LimitedToStores empty → all channels active → B2C is included
         row["B2C"] = "Yes";
       } else {
+        // Not in published or limited to other stores → force draft
         row["B2C"] = "No";
         row["Status"] = "draft";
         row["Published"] = "FALSE";
