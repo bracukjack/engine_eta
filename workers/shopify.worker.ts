@@ -323,7 +323,12 @@ ctx.onmessage = (e: MessageEvent) => {
       if (compareAtPrice !== null && !existingTags.includes("Sale")) {
         existingTags.push("Sale");
       }
-      const tagsOut = existingTags.length > 0 ? existingTags.join(", ") : null;
+      // "Sale" and "New" are mutually exclusive — "New" is removed when "Sale" is present
+      const hasSale = existingTags.some((t) => t.toLowerCase() === "sale");
+      const filteredTags = hasSale
+        ? existingTags.filter((t) => t.toLowerCase() !== "new")
+        : existingTags;
+      const tagsOut = filteredTags.length > 0 ? filteredTags.join(", ") : null;
 
       output.push({
         No: 0,
