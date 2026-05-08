@@ -9,7 +9,8 @@
       "Bash(node -e \"require\\(''''chart.js''''\\)\")",
       "Bash(npx tsc:*)",
       "Bash(node -e \":*)",
-      "Bash(node -e ':*)"
+      "Bash(node -e ':*)",
+      "Bash(yarn build *)"
     ]
   }
 }

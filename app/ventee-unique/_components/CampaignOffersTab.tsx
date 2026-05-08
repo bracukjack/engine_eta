@@ -200,25 +200,31 @@ function ExportMenu({
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
+  const country = useOPMarketingStore((s) => s.country);
+
   const getExportData = useCallback(() => {
     const headers = activeCols.map((c) => c.key);
     const data = rows.map((row) => activeCols.map((c) => row[c.key] ?? ""));
     return { headers, data };
   }, [rows, activeCols]);
 
+  const baseName = useCallback(() => {
+    const date = new Date().toISOString().slice(0, 10);
+    const suffix = country.trim() ? `_${country.trim().toUpperCase()}` : "";
+    return `campaign_offers${suffix}_${date}`;
+  }, [country]);
+
   const handleExcel = useCallback(async () => {
     const { headers, data } = getExportData();
-    const date = new Date().toISOString().slice(0, 10);
-    await exportToExcel(headers, data, `campaign_offers_${date}`, "Campaign Offers");
+    await exportToExcel(headers, data, baseName(), "Campaign Offers");
     setOpen(false);
-  }, [getExportData]);
+  }, [getExportData, baseName]);
 
   const handleCsv = useCallback(() => {
     const { headers, data } = getExportData();
-    const date = new Date().toISOString().slice(0, 10);
-    exportToCsv(headers, data, `campaign_offers_${date}`);
+    exportToCsv(headers, data, baseName());
     setOpen(false);
-  }, [getExportData]);
+  }, [getExportData, baseName]);
 
   return (
     <div className="relative z-40">

@@ -219,7 +219,7 @@ export const useOPMarketingStore = create<OPMarketingState>()(
       updateRow: (index, patch) =>
         set((state) => {
           const results = [...state.results];
-          results[index] = { ...results[index], ...patch };
+          results[index] = { ...results[index], ...(patch as Record<string, string | number>) } as CampaignOfferRow;
           return { results };
         }),
 
