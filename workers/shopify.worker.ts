@@ -320,7 +320,8 @@ ctx.onmessage = (e: MessageEvent) => {
         ? rawTags.split(",").map((t) => t.trim()).filter(Boolean)
         : [];
       // Add "Sale" tag if there is a compare-at price (i.e. product is discounted)
-      if (compareAtPrice !== null && !existingTags.includes("Sale")) {
+      const alreadyHasSaleTag = existingTags.some((t) => t.toLowerCase() === "sale");
+      if (compareAtPrice !== null && !alreadyHasSaleTag) {
         existingTags.push("Sale");
       }
       // "Sale" and "New" are mutually exclusive — "New" is removed when "Sale" is present

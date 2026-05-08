@@ -292,6 +292,7 @@ export function DataTable() {
   const discountFilter = useAppStore((s) => s.discountFilter);
   const policyFilter = useAppStore((s) => s.policyFilter);
   const b2cFilter = useAppStore((s) => s.b2cFilter);
+  const dupSkuFilter = useAppStore((s) => s.dupSkuFilter);
   const search = useAppStore((s) => s.search);
   const sortColumn = useAppStore((s) => s.sortColumn);
   const sortDirection = useAppStore((s) => s.sortDirection);
@@ -322,6 +323,12 @@ export function DataTable() {
     return () => ro.disconnect();
   }, []);
 
+  const dupSkuSet = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of results) counts.set(r["Variant SKU"], (counts.get(r["Variant SKU"]) ?? 0) + 1);
+    return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([s]) => s));
+  }, [results]);
+
   // Filter data
   const filteredData = useMemo(() => {
     let data = results;
@@ -346,6 +353,9 @@ export function DataTable() {
     } else if (b2cFilter === "no") {
       data = data.filter((r) => r.B2C === "No");
     }
+    if (dupSkuFilter) {
+      data = data.filter((r) => dupSkuSet.has(r["Variant SKU"]));
+    }
     const matcher = buildSearchMatcher(search);
     if (matcher) {
       data = data.filter((r) =>
@@ -353,7 +363,7 @@ export function DataTable() {
       );
     }
     return data;
-  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, search]);
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, dupSkuFilter, dupSkuSet, search]);
 
   // Sort data with nulls-to-bottom
   const sortedData = useMemo(() => {

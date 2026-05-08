@@ -276,11 +276,14 @@ export function RightPanel({
   discountFilter,
   policyFilter,
   b2cFilter,
+  dupSkuFilter,
+  dupSkuCount,
   setStatusFilter,
   setEtaFilter,
   setDiscountFilter,
   setPolicyFilter,
   setB2cFilter,
+  setDupSkuFilter,
   activeTab,
   onTabChange,
 }: {
@@ -290,11 +293,14 @@ export function RightPanel({
   discountFilter: string;
   policyFilter: string;
   b2cFilter: string;
+  dupSkuFilter: boolean;
+  dupSkuCount: number;
   setStatusFilter: (v: "all" | "active" | "draft") => void;
   setEtaFilter: (v: "all" | "yes" | "no") => void;
   setDiscountFilter: (v: "all" | "yes" | "no") => void;
   setPolicyFilter: (v: "all" | "continue" | "deny") => void;
   setB2cFilter: (v: "all" | "yes" | "no") => void;
+  setDupSkuFilter: (v: boolean) => void;
   activeTab: "output" | "preview";
   onTabChange: (t: "output" | "preview") => void;
 }) {
@@ -394,6 +400,21 @@ export function RightPanel({
             ]}
             onChange={(v) => setB2cFilter(v as "all" | "yes" | "no")}
           />
+          <button
+            onClick={() => setDupSkuFilter(!dupSkuFilter)}
+            className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded border cursor-pointer transition-colors ${
+              dupSkuFilter
+                ? "bg-orange-500 text-white border-orange-500"
+                : "bg-white text-muted border-edge hover:bg-slate-50"
+            }`}
+          >
+            Dup SKU
+            {dupSkuCount > 0 && (
+              <span className={`text-[9px] font-mono rounded px-1 ${dupSkuFilter ? "bg-white/20 text-white" : "bg-orange-100 text-orange-600"}`}>
+                {dupSkuCount}
+              </span>
+            )}
+          </button>
           {isFiltered && (
             <div className="flex items-center gap-1.5">
               {statusFilter !== "all" && <FilterChip label={`Status: ${statusFilter}`} onRemove={() => setStatusFilter("all")} />}
@@ -401,6 +422,7 @@ export function RightPanel({
               {discountFilter !== "all" && <FilterChip label={`Discount: ${discountFilter}`} onRemove={() => setDiscountFilter("all")} />}
               {policyFilter !== "all" && <FilterChip label={`Policy: ${policyFilter}`} onRemove={() => setPolicyFilter("all")} />}
               {b2cFilter !== "all" && <FilterChip label={`B2C: ${b2cFilter}`} onRemove={() => setB2cFilter("all")} />}
+              {dupSkuFilter && <FilterChip label="Dup SKU" onRemove={() => setDupSkuFilter(false)} />}
             </div>
           )}
         </div>

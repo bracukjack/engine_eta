@@ -65,6 +65,7 @@ function ShopifyProcessorInner() {
   const discountFilter = useAppStore((s) => s.discountFilter);
   const policyFilter = useAppStore((s) => s.policyFilter);
   const b2cFilter = useAppStore((s) => s.b2cFilter);
+  const dupSkuFilter = useAppStore((s) => s.dupSkuFilter);
   const search = useAppStore((s) => s.search);
   const setSearch = useAppStore((s) => s.setSearch);
   const setStatusFilter = useAppStore((s) => s.setStatusFilter);
@@ -72,6 +73,7 @@ function ShopifyProcessorInner() {
   const setDiscountFilter = useAppStore((s) => s.setDiscountFilter);
   const setPolicyFilter = useAppStore((s) => s.setPolicyFilter);
   const setB2cFilter = useAppStore((s) => s.setB2cFilter);
+  const setDupSkuFilter = useAppStore((s) => s.setDupSkuFilter);
   const visibleColumns = useAppStore((s) => s.visibleColumns);
   const sortColumn = useAppStore((s) => s.sortColumn);
   const sortDirection = useAppStore((s) => s.sortDirection);
@@ -114,6 +116,15 @@ function ShopifyProcessorInner() {
     return () => clearTimeout(id);
   }, [searchInput, setSearch]);
 
+  const dupSkuSet = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of results) {
+      const sku = r["Variant SKU"];
+      counts.set(sku, (counts.get(sku) ?? 0) + 1);
+    }
+    return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([s]) => s));
+  }, [results]);
+
   const filteredRows = useMemo(() => {
     let data = results;
     if (statusFilter !== "all") data = data.filter((r) => r.Status === statusFilter);
@@ -124,6 +135,7 @@ function ShopifyProcessorInner() {
     if (policyFilter !== "all") data = data.filter((r) => r["Variant Inventory Policy"] === policyFilter);
     if (b2cFilter === "yes") data = data.filter((r) => r.B2C === "Yes");
     else if (b2cFilter === "no") data = data.filter((r) => r.B2C === "No");
+    if (dupSkuFilter) data = data.filter((r) => dupSkuSet.has(r["Variant SKU"]));
     const matcher = buildSearchMatcher(search);
     if (matcher) {
       data = data.filter((r) =>
@@ -131,7 +143,7 @@ function ShopifyProcessorInner() {
       );
     }
     return data;
-  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, search]);
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, dupSkuFilter, dupSkuSet, search]);
 
   const sortedRows = useMemo(() => {
     if (!sortColumn) return filteredRows;
@@ -156,7 +168,7 @@ function ShopifyProcessorInner() {
     return Math.min(exportRowLimit, sortedRows.length);
   }, [exportRowLimit, customRowLimit, sortedRows.length]);
 
-  const isFiltered = statusFilter !== "all" || etaFilter !== "all" || discountFilter !== "all" || policyFilter !== "all" || b2cFilter !== "all" || search !== "";
+  const isFiltered = statusFilter !== "all" || etaFilter !== "all" || discountFilter !== "all" || policyFilter !== "all" || b2cFilter !== "all" || dupSkuFilter || search !== "";
 
   useEffect(() => {
     workerRef.current = new Worker(
@@ -588,11 +600,14 @@ function ShopifyProcessorInner() {
             discountFilter={discountFilter}
             policyFilter={policyFilter}
             b2cFilter={b2cFilter}
+            dupSkuFilter={dupSkuFilter}
+            dupSkuCount={dupSkuSet.size}
             setStatusFilter={setStatusFilter}
             setEtaFilter={setEtaFilter}
             setDiscountFilter={setDiscountFilter}
             setPolicyFilter={setPolicyFilter}
             setB2cFilter={setB2cFilter}
+            setDupSkuFilter={setDupSkuFilter}
             activeTab={urlTab}
             onTabChange={setUrlTab}
           />

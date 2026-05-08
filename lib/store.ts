@@ -38,12 +38,14 @@ interface AppStore {
   discountFilter: "all" | "yes" | "no";
   policyFilter: "all" | "continue" | "deny";
   b2cFilter: "all" | "yes" | "no";
+  dupSkuFilter: boolean;
   search: string;
   setStatusFilter: (f: "all" | "active" | "draft") => void;
   setEtaFilter: (f: "all" | "yes" | "no") => void;
   setDiscountFilter: (f: "all" | "yes" | "no") => void;
   setPolicyFilter: (f: "all" | "continue" | "deny") => void;
   setB2cFilter: (f: "all" | "yes" | "no") => void;
+  setDupSkuFilter: (v: boolean) => void;
   setSearch: (s: string) => void;
 
   // ── Column Visibility ──────────────────────────────────────────────
@@ -149,12 +151,14 @@ export const useAppStore = create<AppStore>()(
   discountFilter: "all",
   policyFilter: "all",
   b2cFilter: "all",
+  dupSkuFilter: false,
   search: "",
   setStatusFilter: (f) => set({ statusFilter: f }),
   setEtaFilter: (f) => set({ etaFilter: f }),
   setDiscountFilter: (f) => set({ discountFilter: f }),
   setPolicyFilter: (f) => set({ policyFilter: f }),
   setB2cFilter: (f) => set({ b2cFilter: f }),
+  setDupSkuFilter: (v) => set({ dupSkuFilter: v }),
   setSearch: (s) => set({ search: s }),
 
   // Column Visibility
