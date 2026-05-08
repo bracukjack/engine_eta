@@ -2,7 +2,6 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { idbStorage } from "@/lib/idb-storage";
 import type { CampaignOfferRow, KatanaLangKey } from "./types";
-import { ALL_COLUMN_KEYS } from "./types";
 
 interface OPMarketingState {
   // Config
@@ -23,9 +22,18 @@ interface OPMarketingState {
   katanaFileName: string | null;
   katanaBuffer: ArrayBuffer | null;
 
-  // Katana language selection — persisted
-  selectedLang: KatanaLangKey;
-  setSelectedLang: (lang: KatanaLangKey) => void;
+  // Katana language multi-selection — persisted
+  selectedLangs: KatanaLangKey[];
+  toggleLang: (lang: KatanaLangKey) => void;
+  setSelectedLangs: (langs: KatanaLangKey[]) => void;
+
+  // Run mode — persisted
+  appendMode: boolean;
+  setAppendMode: (v: boolean) => void;
+
+  // Stock filter — persisted
+  minStock: number;
+  setMinStock: (v: number) => void;
 
   // Processing
   processingState: "idle" | "processing" | "success" | "error";
@@ -33,13 +41,16 @@ interface OPMarketingState {
 
   // Results — persisted
   results: CampaignOfferRow[];
+  /** Ordered column keys present in current results (drives table column order) */
+  activeColumnKeys: string[];
   matchedCount: number;
   skippedCount: number;
 
   // Table UI — persisted
   search: string;
-  sortColumn: keyof CampaignOfferRow | null;
+  sortColumn: string | null;
   sortDirection: "asc" | "desc";
+  /** Which of activeColumnKeys are visible */
   visibleColumns: string[];
 
   // File actions
@@ -57,11 +68,19 @@ interface OPMarketingState {
   // Processing actions
   setProcessing: () => void;
   setError: (err: string) => void;
-  setResults: (rows: CampaignOfferRow[], matched: number, skipped: number) => void;
+  /**
+   * @param columnKeys  Ordered column keys from the new result rows
+   */
+  setResults: (
+    rows: CampaignOfferRow[],
+    matched: number,
+    skipped: number,
+    columnKeys: string[]
+  ) => void;
 
   // Table actions
   setSearch: (v: string) => void;
-  toggleSort: (col: keyof CampaignOfferRow) => void;
+  toggleSort: (col: string) => void;
   toggleColumn: (col: string) => void;
   showAllColumns: () => void;
   hideAllColumns: () => void;
@@ -74,7 +93,7 @@ export const useOPMarketingStore = create<OPMarketingState>()(
   persist(
     (set) => ({
       country: "AT",
-      shopName: "",
+      shopName: "Bazar Bizar",
       setCountry: (country) => set({ country }),
       setShopName: (shopName) => set({ shopName }),
 
@@ -89,19 +108,32 @@ export const useOPMarketingStore = create<OPMarketingState>()(
       katanaFileName: null,
       katanaBuffer: null,
 
-      selectedLang: "Name_en",
-      setSelectedLang: (selectedLang) => set({ selectedLang }),
+      selectedLangs: [],
+      toggleLang: (lang) =>
+        set((state) => ({
+          selectedLangs: state.selectedLangs.includes(lang)
+            ? state.selectedLangs.filter((l) => l !== lang)
+            : [...state.selectedLangs, lang],
+        })),
+      setSelectedLangs: (selectedLangs) => set({ selectedLangs }),
+
+      appendMode: false,
+      setAppendMode: (appendMode) => set({ appendMode }),
+
+      minStock: 3,
+      setMinStock: (minStock) => set({ minStock: Math.max(1, Math.floor(minStock)) }),
 
       processingState: "idle",
       error: null,
       results: [],
+      activeColumnKeys: [],
       matchedCount: 0,
       skippedCount: 0,
 
       search: "",
       sortColumn: null,
       sortDirection: "asc",
-      visibleColumns: [...ALL_COLUMN_KEYS],
+      visibleColumns: [],
 
       setDisclistFile: (name, buf) =>
         set({ disclistFileName: name, disclistBuffer: buf, error: null }),
@@ -130,8 +162,41 @@ export const useOPMarketingStore = create<OPMarketingState>()(
 
       setProcessing: () => set({ processingState: "processing", error: null }),
       setError: (error) => set({ processingState: "error", error }),
-      setResults: (results, matchedCount, skippedCount) =>
-        set({ processingState: "success", results, matchedCount, skippedCount, error: null }),
+
+      setResults: (newRows, matched, skipped, newColKeys) =>
+        set((state) => {
+          if (state.appendMode && state.results.length > 0) {
+            // Merge column keys: preserve existing order, append any new keys
+            const merged = [...state.activeColumnKeys];
+            for (const k of newColKeys) {
+              if (!merged.includes(k)) merged.push(k);
+            }
+            // Make newly-added columns visible too
+            const mergedVisible = [...state.visibleColumns];
+            for (const k of newColKeys) {
+              if (!mergedVisible.includes(k)) mergedVisible.push(k);
+            }
+            return {
+              processingState: "success",
+              results: [...state.results, ...newRows],
+              activeColumnKeys: merged,
+              matchedCount: state.matchedCount + matched,
+              skippedCount: state.skippedCount + skipped,
+              visibleColumns: mergedVisible,
+              error: null,
+            };
+          }
+          // Replace mode
+          return {
+            processingState: "success",
+            results: newRows,
+            activeColumnKeys: newColKeys,
+            matchedCount: matched,
+            skippedCount: skipped,
+            visibleColumns: newColKeys,
+            error: null,
+          };
+        }),
 
       setSearch: (search) => set({ search }),
       toggleSort: (col) =>
@@ -148,7 +213,8 @@ export const useOPMarketingStore = create<OPMarketingState>()(
             ? state.visibleColumns.filter((c) => c !== col)
             : [...state.visibleColumns, col],
         })),
-      showAllColumns: () => set({ visibleColumns: [...ALL_COLUMN_KEYS] }),
+      showAllColumns: () =>
+        set((state) => ({ visibleColumns: [...state.activeColumnKeys] })),
       hideAllColumns: () => set({ visibleColumns: [] }),
       updateRow: (index, patch) =>
         set((state) => {
@@ -172,12 +238,14 @@ export const useOPMarketingStore = create<OPMarketingState>()(
           processingState: "idle",
           error: null,
           results: [],
+          activeColumnKeys: [],
           matchedCount: 0,
           skippedCount: 0,
           search: "",
           sortColumn: null,
           sortDirection: "asc",
-          visibleColumns: [...ALL_COLUMN_KEYS],
+          visibleColumns: [],
+          // keep config/filter settings on reset
         }),
     }),
     {
@@ -186,8 +254,11 @@ export const useOPMarketingStore = create<OPMarketingState>()(
       partialize: (state) => ({
         country: state.country,
         shopName: state.shopName,
-        selectedLang: state.selectedLang,
+        selectedLangs: state.selectedLangs,
+        appendMode: state.appendMode,
+        minStock: state.minStock,
         results: state.results,
+        activeColumnKeys: state.activeColumnKeys,
         matchedCount: state.matchedCount,
         skippedCount: state.skippedCount,
         search: state.search,

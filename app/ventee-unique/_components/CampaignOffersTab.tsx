@@ -4,18 +4,112 @@ import { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { cn, buildSearchMatcher, exportToExcel, exportToCsv } from "@/lib/utils";
 import { useOPMarketingStore } from "@/lib/op-marketing/store";
 import { processCampaignOffers } from "@/lib/op-marketing/process";
-import { CAMPAIGN_COLUMNS, KATANA_LANG_COLUMNS } from "@/lib/op-marketing/types";
-import type { CampaignOfferRow, KatanaLangKey } from "@/lib/op-marketing/types";
+import { KATANA_LANG_COLUMNS } from "@/lib/op-marketing/types";
+import type { CampaignOfferRow, ColDef, KatanaLangKey } from "@/lib/op-marketing/types";
+import { buildCampaignColumns } from "@/lib/op-marketing/types";
 import { StockFileSlot } from "@/app/stock-analyzer/components/shared";
 import { Button } from "@/components/ui/button";
 import {
   Play, Loader2, AlertCircle, X, Download, Search,
   ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight,
-  Columns3, Check, Tag, FileSpreadsheet,
+  Columns3, Check, Tag, FileSpreadsheet, PlusCircle, RefreshCw,
+  Languages,
 } from "lucide-react";
 
+// ── Language multi-select dropdown ────────────────────────────────────────────
+function LangPicker() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const selectedLangs = useOPMarketingStore((s) => s.selectedLangs);
+  const toggleLang = useOPMarketingStore((s) => s.toggleLang);
+  const setSelectedLangs = useOPMarketingStore((s) => s.setSelectedLangs);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (
+        ref.current && !ref.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  return (
+    <div className="relative">
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        className={cn(
+          "flex items-center gap-1.5 px-2.5 py-1.5 rounded border text-xs transition-colors cursor-pointer",
+          selectedLangs.length > 0
+            ? "border-accent bg-accent/5 text-accent"
+            : "border-edge bg-white text-muted hover:text-primary hover:border-primary/40"
+        )}
+      >
+        <Languages size={12} />
+        <span>
+          {selectedLangs.length === 0
+            ? "Language (from offers)"
+            : selectedLangs.length === 1
+            ? KATANA_LANG_COLUMNS.find((l) => l.key === selectedLangs[0])?.label ?? selectedLangs[0]
+            : `${selectedLangs.length} languages`}
+        </span>
+        {selectedLangs.length > 0 && (
+          <span
+            onClick={(e) => { e.stopPropagation(); setSelectedLangs([]); }}
+            className="hover:bg-accent/20 rounded p-0.5 -mr-1"
+          >
+            <X size={10} />
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div
+          ref={ref}
+          className="absolute top-full left-0 mt-1 z-50 w-52 bg-white border border-edge rounded-lg shadow-lg py-1"
+        >
+          <div className="px-3 py-1.5 border-b border-edge">
+            <p className="text-[10px] text-muted/70 font-mono leading-tight">
+              Each language adds a separate<br />"Product title (XX)" column
+            </p>
+          </div>
+          <div className="py-1">
+            {KATANA_LANG_COLUMNS.map((lang) => {
+              const checked = selectedLangs.includes(lang.key);
+              return (
+                <button
+                  key={lang.key}
+                  onClick={() => toggleLang(lang.key as KatanaLangKey)}
+                  className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors cursor-pointer"
+                >
+                  <span className={cn(
+                    "flex items-center justify-center w-4 h-4 rounded border shrink-0",
+                    checked ? "bg-accent border-accent text-white" : "border-edge bg-white"
+                  )}>
+                    {checked && <Check size={10} strokeWidth={3} />}
+                  </span>
+                  <span className="text-primary">{lang.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="border-t border-edge px-3 py-1.5">
+            <p className="text-[10px] text-muted/60 font-mono">
+              Katana file required for name lookup
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Column Toggle ─────────────────────────────────────────────────────────────
-function ColumnToggle() {
+function ColumnToggle({ allKeys }: { allKeys: string[] }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -36,7 +130,7 @@ function ColumnToggle() {
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
-  const hidden = CAMPAIGN_COLUMNS.length - visibleColumns.length;
+  const hidden = allKeys.length - visibleColumns.length;
 
   return (
     <div className="relative z-50">
@@ -50,19 +144,19 @@ function ColumnToggle() {
         )}
       </Button>
       {open && (
-        <div ref={ref} className="absolute top-full left-0 mt-1 z-50 w-48 bg-white border border-edge rounded-lg shadow-lg py-1">
+        <div ref={ref} className="absolute top-full left-0 mt-1 z-50 w-52 bg-white border border-edge rounded-lg shadow-lg py-1">
           <div className="flex items-center gap-1 px-2 py-1.5 border-b border-edge">
             <button onClick={showAllColumns} className="text-[11px] text-accent hover:underline cursor-pointer">Select All</button>
             <span className="text-muted text-[11px]">·</span>
             <button onClick={hideAllColumns} className="text-[11px] text-accent hover:underline cursor-pointer">Clear All</button>
           </div>
           <div className="max-h-72 overflow-y-auto py-1">
-            {CAMPAIGN_COLUMNS.map((col) => {
-              const checked = visibleColumns.includes(col.key);
+            {allKeys.map((key) => {
+              const checked = visibleColumns.includes(key);
               return (
                 <button
-                  key={col.key}
-                  onClick={() => toggleColumn(col.key)}
+                  key={key}
+                  onClick={() => toggleColumn(key)}
                   className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors cursor-pointer"
                 >
                   <span className={cn(
@@ -71,7 +165,7 @@ function ColumnToggle() {
                   )}>
                     {checked && <Check size={10} strokeWidth={3} />}
                   </span>
-                  <span className="text-primary truncate">{col.label}</span>
+                  <span className="text-primary truncate">{key}</span>
                 </button>
               );
             })}
@@ -83,11 +177,16 @@ function ColumnToggle() {
 }
 
 // ── Export Dropdown ───────────────────────────────────────────────────────────
-function ExportMenu({ rows }: { rows: CampaignOfferRow[] }) {
+function ExportMenu({
+  rows,
+  activeCols,
+}: {
+  rows: CampaignOfferRow[];
+  activeCols: ColDef[];
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
-  const visibleColumns = useOPMarketingStore((s) => s.visibleColumns);
 
   useEffect(() => {
     if (!open) return;
@@ -101,10 +200,8 @@ function ExportMenu({ rows }: { rows: CampaignOfferRow[] }) {
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
-  const activeCols = CAMPAIGN_COLUMNS.filter((c) => visibleColumns.includes(c.key));
-
   const getExportData = useCallback(() => {
-    const headers = activeCols.map((c) => c.label);
+    const headers = activeCols.map((c) => c.key);
     const data = rows.map((row) => activeCols.map((c) => row[c.key] ?? ""));
     return { headers, data };
   }, [rows, activeCols]);
@@ -156,59 +253,50 @@ function ExportMenu({ rows }: { rows: CampaignOfferRow[] }) {
   );
 }
 
-// ── Editable Cell — every column is editable via double-click ─────────────────
+// ── Editable Cell ─────────────────────────────────────────────────────────────
 function EditableCell({
   rowIndex,
-  col,
+  colKey,
   value,
+  numeric,
+  integer,
+  center,
 }: {
   rowIndex: number;
-  col: (typeof CAMPAIGN_COLUMNS)[number];
+  colKey: string;
   value: string | number;
+  numeric?: boolean;
+  integer?: boolean;
+  center?: boolean;
 }) {
   const updateRow = useOPMarketingStore((s) => s.updateRow);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const handleDoubleClick = useCallback(() => {
-    setDraft(value === null || value === undefined ? "" : String(value));
-    setEditing(true);
-  }, [value]);
-
   useEffect(() => {
-    if (editing) {
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
+    if (editing) { inputRef.current?.focus(); inputRef.current?.select(); }
   }, [editing]);
+
+  const isNumericCol = numeric || integer;
 
   const commit = useCallback(
     (raw: string) => {
       setEditing(false);
       const trimmed = raw.trim();
-
-      if (col.numeric) {
-        // Accept both "1234.56" and "1234,56"
-        const n = parseFloat(trimmed.replace(",", "."));
-        if (!isNaN(n)) updateRow(rowIndex, { [col.key]: n } as Partial<CampaignOfferRow>);
+      if (isNumericCol) {
+        const n = integer
+          ? parseInt(trimmed, 10)
+          : parseFloat(trimmed.replace(",", "."));
+        if (!isNaN(n)) updateRow(rowIndex, { [colKey]: n });
         return;
       }
-      // Text columns — save as-is
-      updateRow(rowIndex, { [col.key]: trimmed } as Partial<CampaignOfferRow>);
+      updateRow(rowIndex, { [colKey]: trimmed });
     },
-    [col, rowIndex, updateRow]
+    [colKey, isNumericCol, integer, rowIndex, updateRow]
   );
 
   const cancel = useCallback(() => setEditing(false), []);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") { e.preventDefault(); commit(draft); }
-      if (e.key === "Escape") cancel();
-    },
-    [draft, commit, cancel]
-  );
 
   if (editing) {
     return (
@@ -218,10 +306,13 @@ function EditableCell({
         value={draft}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => commit(draft)}
-        onKeyDown={handleKeyDown}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(draft); }
+          if (e.key === "Escape") cancel();
+        }}
         className={cn(
           "w-full border border-accent rounded bg-white focus:outline-none text-[12px]",
-          col.numeric ? "text-right font-mono" : "text-left"
+          isNumericCol ? "text-right font-mono" : "text-left"
         )}
         style={{ padding: "1px 6px" }}
       />
@@ -229,8 +320,10 @@ function EditableCell({
   }
 
   const displayValue =
-    col.numeric && typeof value === "number"
-      ? value.toFixed(2).replace(".", ",")
+    integer && typeof value === "number"
+      ? String(Math.round(value))                          // plain integer, no separator
+      : numeric && typeof value === "number"
+      ? value.toFixed(2).replace(".", ",")                 // euro price format
       : value === null || value === undefined || value === ""
       ? "—"
       : String(value);
@@ -239,11 +332,14 @@ function EditableCell({
 
   return (
     <div
-      onDoubleClick={handleDoubleClick}
+      onDoubleClick={() => {
+        setDraft(value === null || value === undefined ? "" : String(value));
+        setEditing(true);
+      }}
       className={cn(
         "w-full h-full flex items-center truncate cursor-text group",
-        col.center && "justify-center",
-        col.numeric && "justify-end font-mono",
+        center && "justify-center",
+        numeric && "justify-end font-mono",
         isEmpty && "text-muted/40"
       )}
       title="Double-click to edit"
@@ -263,31 +359,18 @@ export default function CampaignOffersTab() {
   const [searchInput, setSearchInput] = useState(store.search);
   const [searchTimeout, setSearchTimeout] = useState<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSearchChange = useCallback(
-    (val: string) => {
-      setSearchInput(val);
-      if (searchTimeout) clearTimeout(searchTimeout);
-      setSearchTimeout(setTimeout(() => store.setSearch(val), 200));
-    },
-    [store, searchTimeout]
-  );
+  const handleSearchChange = useCallback((val: string) => {
+    setSearchInput(val);
+    if (searchTimeout) clearTimeout(searchTimeout);
+    setSearchTimeout(setTimeout(() => store.setSearch(val), 200));
+  }, [store, searchTimeout]);
 
   // File handlers
-  const handleDisclist = useCallback(async (file: File) => {
-    store.setDisclistFile(file.name, await file.arrayBuffer());
-  }, [store]);
-  const handleStock = useCallback(async (file: File) => {
-    store.setStockFile(file.name, await file.arrayBuffer());
-  }, [store]);
-  const handleOffers = useCallback(async (file: File) => {
-    store.setOffersFile(file.name, await file.arrayBuffer());
-  }, [store]);
-  const handleLog = useCallback(async (file: File) => {
-    store.setLogFile(file.name, await file.arrayBuffer());
-  }, [store]);
-  const handleKatana = useCallback(async (file: File) => {
-    store.setKatanaFile(file.name, await file.arrayBuffer());
-  }, [store]);
+  const handleDisclist = useCallback(async (f: File) => store.setDisclistFile(f.name, await f.arrayBuffer()), [store]);
+  const handleStock = useCallback(async (f: File) => store.setStockFile(f.name, await f.arrayBuffer()), [store]);
+  const handleOffers = useCallback(async (f: File) => store.setOffersFile(f.name, await f.arrayBuffer()), [store]);
+  const handleLog = useCallback(async (f: File) => store.setLogFile(f.name, await f.arrayBuffer()), [store]);
+  const handleKatana = useCallback(async (f: File) => store.setKatanaFile(f.name, await f.arrayBuffer()), [store]);
 
   const allFilesReady =
     !!store.disclistBuffer &&
@@ -308,22 +391,53 @@ export default function CampaignOffersTab() {
         store.offersBuffer!,
         store.logBuffer!,
         store.katanaBuffer,
-        store.katanaBuffer ? store.selectedLang : null
+        store.katanaBuffer && store.selectedLangs.length > 0 ? store.selectedLangs : null,
+        store.minStock
       );
-      store.setResults(result.rows, result.matched, result.skipped);
+      store.setResults(result.rows, result.matched, result.skipped, result.columnKeys);
       setCurrentPage(1);
     } catch (err) {
       store.setError(err instanceof Error ? err.message : String(err));
     }
   }, [allFilesReady, store]);
 
-  // Derived table data
+  // Build ColDef array from activeColumnKeys (preserves order, derives props from key name)
+  const allColDefs = useMemo((): ColDef[] => {
+    if (store.activeColumnKeys.length === 0) return buildCampaignColumns(store.selectedLangs);
+    return store.activeColumnKeys.map((key): ColDef => {
+      if (key === "Price" || key === "Discount price") return { key, label: key === "Price" ? "Price" : "Disc. Price", flex: 1.5, numeric: true };
+      if (key === "% discount") return { key, label: "% Disc", flex: 1, center: true };
+      if (key === "Country") return { key, label: "Country", flex: 1, center: true };
+      if (key === "EAN") return { key, label: "EAN", flex: 2 };
+      if (key === "SKU VU") return { key, label: "SKU VU", flex: 2 };
+      if (key === "Shop name") return { key, label: "Shop Name", flex: 2 };
+      if (key === "Product title") return { key, label: "Product Title", flex: 3 };
+      if (key.startsWith("Product title (")) return { key, label: key.replace("Product title (", "Title ("), flex: 2.5 };
+      if (key === "Stock") return { key, label: "Stock", flex: 1, integer: true };
+      if (key === "Planned Out") return { key, label: "Plan Out", flex: 1, integer: true };
+      if (key === "Real Stock") return { key, label: "Real Stock", flex: 1.2, integer: true };
+      return { key, label: key, flex: 2 };
+    });
+  }, [store.activeColumnKeys, store.selectedLangs]);
+
+  const activeCols = useMemo(
+    () => allColDefs.filter((c) => store.visibleColumns.includes(c.key)),
+    [allColDefs, store.visibleColumns]
+  );
+  const totalFlex = activeCols.reduce((s, c) => s + c.flex, 0);
+
+  // Filtering & sorting
   const matcher = useMemo(() => buildSearchMatcher(store.search), [store.search]);
 
   const filteredRows = useMemo(() => {
     if (!store.search || !matcher) return store.results;
     return store.results.filter((r) =>
-      matcher([r.EAN, r["SKU VU"], r["Product title"], r["Shop name"], r.Country])
+      matcher([
+        r.EAN, r["SKU VU"], r["Shop name"], r.Country,
+        ...Object.entries(r)
+          .filter(([k]) => k.startsWith("Product title"))
+          .map(([, v]) => String(v)),
+      ])
     );
   }, [store.results, store.search, matcher]);
 
@@ -332,8 +446,7 @@ export default function CampaignOffersTab() {
     const col = store.sortColumn;
     const dir = store.sortDirection === "asc" ? 1 : -1;
     return [...filteredRows].sort((a, b) => {
-      const av = a[col];
-      const bv = b[col];
+      const av = a[col]; const bv = b[col];
       if (typeof av === "number" && typeof bv === "number") return (av - bv) * dir;
       return String(av ?? "").localeCompare(String(bv ?? ""), undefined, { numeric: true }) * dir;
     });
@@ -355,13 +468,6 @@ export default function CampaignOffersTab() {
     return Array.from({ length: 7 }, (_, i) => safePage - 3 + i);
   }, [totalPages, safePage]);
 
-  const activeCols = useMemo(
-    () => CAMPAIGN_COLUMNS.filter((c) => store.visibleColumns.includes(c.key)),
-    [store.visibleColumns]
-  );
-  const totalFlex = activeCols.reduce((s, c) => s + c.flex, 0);
-
-  // Map paged row back to its index in store.results for editing
   const getResultIndex = useCallback(
     (row: CampaignOfferRow) => store.results.indexOf(row),
     [store.results]
@@ -371,8 +477,10 @@ export default function CampaignOffersTab() {
 
   return (
     <div className="flex flex-1 min-h-0">
-      {/* ── Left panel: config + files ── */}
-      <div className="w-[240px] shrink-0 border-r border-edge bg-surface/50 p-3 space-y-3 overflow-y-auto flex flex-col">
+      {/* ── Left panel ── */}
+      <div className="w-[240px] shrink-0 border-r border-edge bg-surface/50 p-3 space-y-3 overflow-y-auto">
+
+        {/* Config */}
         <div className="space-y-2">
           <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider px-1">
             Configuration
@@ -397,20 +505,54 @@ export default function CampaignOffersTab() {
               <input
                 value={store.shopName}
                 onChange={(e) => store.setShopName(e.target.value)}
-                placeholder="e.g. MyShop"
+                placeholder="Bazar Bizar"
                 className="w-full border border-edge rounded px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent/50 bg-white"
               />
+            </div>
+            <div>
+              <label className="text-[11px] text-muted font-medium block mb-0.5">
+                Min Real Stock
+              </label>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={1}
+                  value={store.minStock}
+                  onChange={(e) => store.setMinStock(Number(e.target.value) || 1)}
+                  className="w-full border border-edge rounded px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent/50 bg-white"
+                />
+                <div className="flex flex-row gap-0.5 shrink-0">
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <button
+                      key={n}
+                      onClick={() => store.setMinStock(n)}
+                      className={cn(
+                        "px-1.5 py-0.5 text-[10px] rounded border font-mono transition-colors cursor-pointer",
+                        store.minStock === n
+                          ? "bg-accent text-white border-accent"
+                          : "bg-white text-muted border-edge hover:border-accent/50 hover:text-accent"
+                      )}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="text-[10px] text-muted/50 mt-0.5 font-mono">
+                stock − planned_out ≥ {store.minStock}
+              </p>
             </div>
           </div>
         </div>
 
+        {/* Shared files — uploaded once */}
         <div className="space-y-2">
           <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider px-1">
-            Input Files
+            Shared Files
           </h3>
           <StockFileSlot
             label="Discount List"
-            hint=".xlsx file"
+            hint=".xlsx"
             required
             fileName={store.disclistFileName}
             isReady={!!store.disclistFileName}
@@ -427,15 +569,6 @@ export default function CampaignOffersTab() {
             onClear={store.removeStockFile}
           />
           <StockFileSlot
-            label="Offers CSV"
-            hint=".csv (semicolon sep.)"
-            required
-            fileName={store.offersFileName}
-            isReady={!!store.offersFileName}
-            onDrop={handleOffers}
-            onClear={store.removeOffersFile}
-          />
-          <StockFileSlot
             label="Item Log CSV"
             hint=".csv (UTF-16)"
             required
@@ -446,7 +579,45 @@ export default function CampaignOffersTab() {
           />
         </div>
 
-        {/* Katana — optional, for multilingual product names */}
+        {/* Offers — can be swapped per channel */}
+        <div className="space-y-2">
+          <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider px-1 flex items-center gap-1">
+            Offers
+            <span className="text-[9px] text-muted/50 font-normal normal-case tracking-normal">per channel</span>
+          </h3>
+          <StockFileSlot
+            label="Offers CSV"
+            hint=".csv (semicolon sep.)"
+            required
+            fileName={store.offersFileName}
+            isReady={!!store.offersFileName}
+            onDrop={handleOffers}
+            onClear={store.removeOffersFile}
+          />
+          {/* Append mode toggle */}
+          <div className="flex items-center justify-between px-0.5">
+            <div className="flex flex-col">
+              <span className="text-[11px] text-muted font-medium">Append to table</span>
+              <span className="text-[10px] text-muted/50">
+                {store.appendMode ? "Run adds rows to existing data" : "Run replaces existing data"}
+              </span>
+            </div>
+            <button
+              onClick={() => store.setAppendMode(!store.appendMode)}
+              className={cn(
+                "relative inline-flex h-4 w-7 items-center rounded-full transition-colors shrink-0",
+                store.appendMode ? "bg-accent" : "bg-edge"
+              )}
+            >
+              <span className={cn(
+                "inline-block h-3 w-3 rounded-full bg-white transition-transform",
+                store.appendMode ? "translate-x-3.5" : "translate-x-0.5"
+              )} />
+            </button>
+          </div>
+        </div>
+
+        {/* Katana — optional, multilingual product names */}
         <div className="space-y-2">
           <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider px-1">
             Product Names
@@ -459,30 +630,17 @@ export default function CampaignOffersTab() {
             onDrop={handleKatana}
             onClear={store.removeKatanaFile}
           />
-          {/* Language selector — only shown when Katana file is loaded */}
           {store.katanaFileName && (
             <div>
-              <label className="text-[11px] text-muted font-medium block mb-0.5">
-                Product Name Language
+              <label className="text-[11px] text-muted font-medium block mb-1">
+                Language columns
               </label>
-              <select
-                value={store.selectedLang}
-                onChange={(e) => store.setSelectedLang(e.target.value as KatanaLangKey)}
-                className="w-full border border-edge rounded px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent/50 bg-white cursor-pointer"
-              >
-                {KATANA_LANG_COLUMNS.map((lang) => (
-                  <option key={lang.key} value={lang.key}>
-                    {lang.label}
-                  </option>
-                ))}
-              </select>
-              <p className="text-[10px] text-muted/60 font-mono mt-1 px-0.5">
-                Overrides "Product title" from offers
-              </p>
+              <LangPicker />
             </div>
           )}
         </div>
 
+        {/* Result summary */}
         {hasResults && (
           <div className="space-y-1 pt-1 border-t border-edge">
             <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider px-1">
@@ -490,7 +648,7 @@ export default function CampaignOffersTab() {
             </h3>
             <div className="space-y-1 px-1">
               <div className="flex justify-between text-[11px]">
-                <span className="text-muted">Output rows</span>
+                <span className="text-muted">Total rows</span>
                 <span className="font-mono text-primary font-semibold">{store.results.length}</span>
               </div>
               <div className="flex justify-between text-[11px]">
@@ -508,7 +666,7 @@ export default function CampaignOffersTab() {
 
       {/* ── Right panel ── */}
       <div className="flex-1 flex flex-col min-h-0">
-        {/* Top action bar */}
+        {/* Action bar */}
         <div className="shrink-0 border-b border-edge bg-surface px-4 py-2.5 flex items-center gap-2 flex-wrap">
           <Button
             variant="accent"
@@ -518,11 +676,34 @@ export default function CampaignOffersTab() {
           >
             {store.processingState === "processing" ? (
               <Loader2 size={14} className="animate-spin mr-1.5" />
+            ) : store.appendMode && hasResults ? (
+              <PlusCircle size={12} className="mr-1.5" />
             ) : (
               <Play size={12} className="mr-1.5" />
             )}
-            {store.processingState === "processing" ? "Processing…" : "Run"}
+            {store.processingState === "processing"
+              ? "Processing…"
+              : store.appendMode && hasResults
+              ? "Run & Append"
+              : "Run"}
           </Button>
+
+          {/* Append mode quick-toggle in bar */}
+          {hasResults && (
+            <button
+              onClick={() => store.setAppendMode(!store.appendMode)}
+              className={cn(
+                "flex items-center gap-1.5 text-[11px] px-2 py-1 rounded border transition-colors cursor-pointer",
+                store.appendMode
+                  ? "border-accent/40 bg-accent/5 text-accent"
+                  : "border-edge bg-white text-muted hover:text-primary"
+              )}
+              title={store.appendMode ? "Append mode: Run adds rows to existing table" : "Replace mode: Run replaces existing table"}
+            >
+              {store.appendMode ? <PlusCircle size={11} /> : <RefreshCw size={11} />}
+              {store.appendMode ? "Append" : "Replace"}
+            </button>
+          )}
 
           {hasResults && (
             <>
@@ -530,11 +711,11 @@ export default function CampaignOffersTab() {
                 onClick={store.resetAll}
                 className="flex items-center gap-1.5 text-[11px] text-muted hover:text-red-500 transition-colors cursor-pointer ml-1"
               >
-                <X size={12} /> Reset Data
+                <X size={12} /> Reset
               </button>
               <div className="w-px h-5 bg-edge shrink-0 mx-1" />
-              <ColumnToggle />
-              <ExportMenu rows={sortedRows} />
+              <ColumnToggle allKeys={store.activeColumnKeys} />
+              <ExportMenu rows={sortedRows} activeCols={activeCols} />
             </>
           )}
 
@@ -563,13 +744,13 @@ export default function CampaignOffersTab() {
               {filteredRows.length < store.results.length
                 ? `${filteredRows.length.toLocaleString()} / ${store.results.length.toLocaleString()} rows`
                 : `${store.results.length.toLocaleString()} rows`}
-              {" · "}{activeCols.length}/{CAMPAIGN_COLUMNS.length} cols
-              {" · "}<span className="text-muted/60">dbl-click cell to edit</span>
+              {" · "}{activeCols.length}/{allColDefs.length} cols
+              {" · "}<span className="text-muted/50">dbl-click to edit</span>
             </span>
           )}
         </div>
 
-        {/* Error banner */}
+        {/* Error */}
         {store.processingState === "error" && (
           <div className="mx-4 mt-3 px-3 py-2 rounded bg-red-50 border border-red-200 text-red-600 text-xs font-mono flex items-start gap-2">
             <AlertCircle size={14} className="shrink-0 mt-0.5" />
@@ -588,13 +769,13 @@ export default function CampaignOffersTab() {
         ) : hasResults ? (
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex-1 min-h-0 overflow-auto">
-              <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 700 }}>
+              <table
+                className="w-full border-collapse"
+                style={{ tableLayout: "fixed", minWidth: Math.max(700, activeCols.length * 100) }}
+              >
                 <colgroup>
                   {activeCols.map((col) => (
-                    <col
-                      key={col.key}
-                      style={{ width: `${((col.flex / totalFlex) * 100).toFixed(2)}%` }}
-                    />
+                    <col key={col.key} style={{ width: `${((col.flex / totalFlex) * 100).toFixed(2)}%` }} />
                   ))}
                 </colgroup>
 
@@ -655,13 +836,16 @@ export default function CampaignOffersTab() {
                               key={col.key}
                               className={cn(
                                 "px-2 py-1.5 text-[12px] overflow-hidden",
-                                col.numeric ? "text-right" : col.center ? "text-center" : "text-left"
+                                (col.numeric || col.integer) ? "text-right" : col.center ? "text-center" : "text-left"
                               )}
                             >
                               <EditableCell
                                 rowIndex={resultIdx}
-                                col={col}
+                                colKey={col.key}
                                 value={row[col.key] ?? ""}
+                                numeric={col.numeric}
+                                integer={col.integer}
+                                center={col.center}
                               />
                             </td>
                           ))}
@@ -702,34 +886,11 @@ export default function CampaignOffersTab() {
               </div>
               {rowsPerPage !== "all" && totalPages > 1 && (
                 <div className="flex items-center gap-0.5 shrink-0">
-                  <button
-                    onClick={() => setCurrentPage(Math.max(1, safePage - 1))}
-                    disabled={safePage === 1}
-                    className="p-1 rounded text-muted hover:text-primary hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronLeft size={14} />
-                  </button>
+                  <button onClick={() => setCurrentPage(Math.max(1, safePage - 1))} disabled={safePage === 1} className="p-1 rounded text-muted hover:text-primary hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"><ChevronLeft size={14} /></button>
                   {pageNumbers.map((page) => (
-                    <button
-                      key={page}
-                      onClick={() => setCurrentPage(page)}
-                      className={cn(
-                        "w-6 h-6 rounded text-[11px] font-mono transition-colors",
-                        safePage === page
-                          ? "bg-accent text-white"
-                          : "text-muted hover:text-primary hover:bg-surface-hover"
-                      )}
-                    >
-                      {page}
-                    </button>
+                    <button key={page} onClick={() => setCurrentPage(page)} className={cn("w-6 h-6 rounded text-[11px] font-mono transition-colors", safePage === page ? "bg-accent text-white" : "text-muted hover:text-primary hover:bg-surface-hover")}>{page}</button>
                   ))}
-                  <button
-                    onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))}
-                    disabled={safePage === totalPages}
-                    className="p-1 rounded text-muted hover:text-primary hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <ChevronRight size={14} />
-                  </button>
+                  <button onClick={() => setCurrentPage(Math.min(totalPages, safePage + 1))} disabled={safePage === totalPages} className="p-1 rounded text-muted hover:text-primary hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed transition-colors"><ChevronRight size={14} /></button>
                 </div>
               )}
             </div>
@@ -738,12 +899,11 @@ export default function CampaignOffersTab() {
           <div className="flex-1 flex items-center justify-center p-8">
             <div className="text-center space-y-2">
               <Tag size={40} className="mx-auto text-muted/30" />
-              <p className="text-sm text-muted">Fill in config and upload all 4 files to start</p>
+              <p className="text-sm text-muted">Upload shared files + offers to start</p>
               <div className="text-[11px] text-muted/50 font-mono mt-2 space-y-0.5">
-                <p>• Discount List (.xlsx)</p>
-                <p>• Stock CSV (UTF-16)</p>
-                <p>• Offers CSV (semicolon delimiter)</p>
-                <p>• Item Log CSV (UTF-16)</p>
+                <p>Shared: Discount List, Stock CSV, Item Log CSV</p>
+                <p>Per channel: Offers CSV</p>
+                <p>Optional: Katana (multilingual names)</p>
               </div>
             </div>
           </div>

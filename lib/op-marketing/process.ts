@@ -1,26 +1,41 @@
 import Papa from "papaparse";
-import type { Config, DiscountRow, StockRow, OfferRow, LogRow, KatanaRow, CampaignOfferRow } from "./types";
+import type {
+  Config, DiscountRow, StockRow, OfferRow, LogRow, KatanaRow, CampaignOfferRow,
+} from "./types";
+import { langCodeToTitleKey } from "./types";
 
-function filterPositiveStock(rows: StockRow[]): Map<string, number> {
-  const map = new Map<string, number>();
+interface StockInfo {
+  stock: number;
+  plannedOut: number;
+  realStock: number;
+}
+
+function buildStockMap(rows: StockRow[], minStock: number): Map<string, StockInfo> {
+  const map = new Map<string, StockInfo>();
   for (const r of rows) {
     const stock = Number(r.Stock) || 0;
-    const planned = Number(r.PlannedOutStock) || 0;
-    const real = stock - planned;
-    if (real > 0) map.set(String(r.ItemCode).trim(), real);
+    const plannedOut = Number(r.PlannedOutStock) || 0;
+    const realStock = stock - plannedOut;
+    if (realStock >= minStock) {
+      map.set(String(r.ItemCode).trim(), { stock, plannedOut, realStock });
+    }
   }
   return map;
 }
 
 function matchOffers(
   disc: DiscountRow[],
-  stockMap: Map<string, number>,
+  stockMap: Map<string, StockInfo>,
   offers: OfferRow[]
 ) {
   const offerMap = new Map(offers.map((o) => [String(o["Offer SKU"]).trim(), o]));
   return disc
     .filter((d) => stockMap.has(String(d.SKU).trim()))
-    .map((d) => ({ ...d, offer: offerMap.get(String(d.SKU).trim()) }))
+    .map((d) => ({
+      ...d,
+      offer: offerMap.get(String(d.SKU).trim()),
+      stockInfo: stockMap.get(String(d.SKU).trim())!,
+    }))
     .filter((d) => d.offer !== undefined);
 }
 
@@ -65,16 +80,21 @@ function formatDiscPct(disc: string): string {
   return s;
 }
 
-function buildKatanaLookup(
+// Build a map: sku → { langKey → productName }
+function buildKatanaMultiLookup(
   katanaRows: KatanaRow[],
-  langCol: string
-): Map<string, string> {
-  const map = new Map<string, string>();
+  langs: string[]
+): Map<string, Record<string, string>> {
+  const map = new Map<string, Record<string, string>>();
   for (const r of katanaRows) {
     const sku = String(r.Sku ?? "").trim();
     if (!sku) continue;
-    const name = String(r[langCol] ?? "").trim();
-    if (name) map.set(sku, name);
+    const names: Record<string, string> = {};
+    for (const lang of langs) {
+      const name = String(r[lang] ?? "").trim();
+      if (name) names[lang] = name;
+    }
+    if (Object.keys(names).length > 0) map.set(sku, names);
   }
   return map;
 }
@@ -82,34 +102,51 @@ function buildKatanaLookup(
 function buildOutputRows(
   enriched: ReturnType<typeof enrichWithPrice>,
   config: Config,
-  katanaMap: Map<string, string> | null
+  katanaMap: Map<string, Record<string, string>> | null,
+  selectedLangs: string[]
 ): CampaignOfferRow[] {
   return enriched
     .filter((r) => r.retailPrice !== null)
-    .map((r) => {
+    .map((r): CampaignOfferRow => {
       const sku = String(r.SKU).trim();
-      // Prefer Katana name; fall back to offers Product column
-      const productTitle =
-        (katanaMap && katanaMap.get(sku)) ||
-        String(r.offer!.Product ?? "").trim();
+      const fallbackTitle = String(r.offer!.Product ?? "").trim();
+
+      // Build title columns
+      const titleEntries: Record<string, string> = {};
+      if (selectedLangs.length === 0 || !katanaMap) {
+        // No Katana / no lang selected → single "Product title" from offers
+        titleEntries["Product title"] = fallbackTitle;
+      } else {
+        // One column per selected language
+        const katanaNames = katanaMap.get(sku) ?? {};
+        for (const lang of selectedLangs) {
+          const colKey = langCodeToTitleKey(lang);
+          titleEntries[colKey] = katanaNames[lang] || fallbackTitle;
+        }
+      }
 
       return {
         EAN: String(r.GTIN ?? "").trim(),
         "SKU VU": String(r.offer!["Product SKU"] ?? "").trim(),
         "Shop name": config.shopName,
-        "Product title": productTitle,
+        ...titleEntries,
         Price: r.retailPrice!,
         "Discount price": calcDiscountPrice(r.retailPrice!, r.DISC),
         "% discount": formatDiscPct(r.DISC),
         Country: config.country,
+        Stock: r.stockInfo.stock,
+        "Planned Out": r.stockInfo.plannedOut,
+        "Real Stock": r.stockInfo.realStock,
       };
     });
 }
 
 export interface ProcessResult {
   rows: CampaignOfferRow[];
-  skipped: number;
   matched: number;
+  skipped: number;
+  /** Ordered column keys for the rows produced by this run */
+  columnKeys: string[];
 }
 
 export function processCampaignOffers(
@@ -119,56 +156,47 @@ export function processCampaignOffers(
   offersBuffer: ArrayBuffer,
   logBuffer: ArrayBuffer,
   katanaBuffer?: ArrayBuffer | null,
-  katanaLangCol?: string | null
+  selectedLangs?: string[] | null,
+  minStock = 1
 ): ProcessResult {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const XLSX = require("xlsx") as typeof import("xlsx");
 
-  // Parse discount list (Excel)
   const discWb = XLSX.read(discBuffer, { type: "array" });
   const disc = XLSX.utils.sheet_to_json<DiscountRow>(
     discWb.Sheets[discWb.SheetNames[0]]
   );
 
-  // Decode CSVs
   const stockText = new TextDecoder("utf-16").decode(stockBuffer);
   const offersText = new TextDecoder("utf-8").decode(offersBuffer);
   const logText = new TextDecoder("utf-16").decode(logBuffer);
 
-  const stock = Papa.parse<StockRow>(stockText, {
-    header: true,
-    skipEmptyLines: true,
-  }).data;
-
+  const stock = Papa.parse<StockRow>(stockText, { header: true, skipEmptyLines: true }).data;
   const offers = Papa.parse<OfferRow>(offersText, {
-    header: true,
-    skipEmptyLines: true,
-    delimiter: ";",
+    header: true, skipEmptyLines: true, delimiter: ";",
   }).data;
+  const log = Papa.parse<LogRow>(logText, { header: true, skipEmptyLines: true }).data;
 
-  const log = Papa.parse<LogRow>(logText, {
-    header: true,
-    skipEmptyLines: true,
-  }).data;
+  const langs = katanaBuffer && selectedLangs && selectedLangs.length > 0
+    ? selectedLangs
+    : [];
 
-  // Optional: parse Katana file and build name lookup
-  let katanaMap: Map<string, string> | null = null;
-  if (katanaBuffer && katanaLangCol) {
+  let katanaMap: Map<string, Record<string, string>> | null = null;
+  if (katanaBuffer && langs.length > 0) {
     const katanaWb = XLSX.read(katanaBuffer, { type: "array" });
     const katanaRows = XLSX.utils.sheet_to_json<KatanaRow>(
       katanaWb.Sheets[katanaWb.SheetNames[0]]
     );
-    katanaMap = buildKatanaLookup(katanaRows, katanaLangCol);
+    katanaMap = buildKatanaMultiLookup(katanaRows, langs);
   }
 
-  const stockMap = filterPositiveStock(stock);
+  const stockMap = buildStockMap(stock, minStock);
   const matched = matchOffers(disc, stockMap, offers);
   const enriched = enrichWithPrice(matched, log);
-  const rows = buildOutputRows(enriched, config, katanaMap);
+  const rows = buildOutputRows(enriched, config, katanaMap, langs);
 
-  return {
-    rows,
-    matched: matched.length,
-    skipped: disc.length - matched.length,
-  };
+  // Derive the column key order from first row (preserves insertion order)
+  const columnKeys = rows.length > 0 ? Object.keys(rows[0]) : [];
+
+  return { rows, matched: matched.length, skipped: disc.length - matched.length, columnKeys };
 }
