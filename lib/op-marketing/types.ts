@@ -56,3 +56,23 @@ export const CAMPAIGN_COLUMNS: {
 ];
 
 export const ALL_COLUMN_KEYS = CAMPAIGN_COLUMNS.map((c) => c.key);
+
+// ── Katana ────────────────────────────────────────────────────────────────────
+
+export interface KatanaRow {
+  Sku: string;
+  [key: string]: string | number | null | undefined;
+}
+
+export const KATANA_LANG_COLUMNS = [
+  { key: "Name_en", label: "English (EN)" },
+  { key: "Name_nl", label: "Dutch (NL)" },
+  { key: "Name_FR", label: "French (FR)" },
+  { key: "Name_ES", label: "Spanish (ES)" },
+  { key: "Name_IT", label: "Italian (IT)" },
+  { key: "Name_DE", label: "German (DE)" },
+  { key: "Name_PT", label: "Portuguese (PT)" },
+  { key: "Name_PL", label: "Polish (PL)" },
+] as const;
+
+export type KatanaLangKey = (typeof KATANA_LANG_COLUMNS)[number]["key"];

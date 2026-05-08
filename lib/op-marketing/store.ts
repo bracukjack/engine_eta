@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { idbStorage } from "@/lib/idb-storage";
-import type { CampaignOfferRow } from "./types";
+import type { CampaignOfferRow, KatanaLangKey } from "./types";
 import { ALL_COLUMN_KEYS } from "./types";
 
 interface OPMarketingState {
@@ -20,6 +20,12 @@ interface OPMarketingState {
   offersBuffer: ArrayBuffer | null;
   logFileName: string | null;
   logBuffer: ArrayBuffer | null;
+  katanaFileName: string | null;
+  katanaBuffer: ArrayBuffer | null;
+
+  // Katana language selection — persisted
+  selectedLang: KatanaLangKey;
+  setSelectedLang: (lang: KatanaLangKey) => void;
 
   // Processing
   processingState: "idle" | "processing" | "success" | "error";
@@ -45,6 +51,8 @@ interface OPMarketingState {
   removeOffersFile: () => void;
   setLogFile: (name: string, buf: ArrayBuffer) => void;
   removeLogFile: () => void;
+  setKatanaFile: (name: string, buf: ArrayBuffer) => void;
+  removeKatanaFile: () => void;
 
   // Processing actions
   setProcessing: () => void;
@@ -78,6 +86,11 @@ export const useOPMarketingStore = create<OPMarketingState>()(
       offersBuffer: null,
       logFileName: null,
       logBuffer: null,
+      katanaFileName: null,
+      katanaBuffer: null,
+
+      selectedLang: "Name_en",
+      setSelectedLang: (selectedLang) => set({ selectedLang }),
 
       processingState: "idle",
       error: null,
@@ -109,6 +122,11 @@ export const useOPMarketingStore = create<OPMarketingState>()(
         set({ logFileName: name, logBuffer: buf, error: null }),
       removeLogFile: () =>
         set({ logFileName: null, logBuffer: null }),
+
+      setKatanaFile: (name, buf) =>
+        set({ katanaFileName: name, katanaBuffer: buf, error: null }),
+      removeKatanaFile: () =>
+        set({ katanaFileName: null, katanaBuffer: null }),
 
       setProcessing: () => set({ processingState: "processing", error: null }),
       setError: (error) => set({ processingState: "error", error }),
@@ -149,6 +167,8 @@ export const useOPMarketingStore = create<OPMarketingState>()(
           offersBuffer: null,
           logFileName: null,
           logBuffer: null,
+          katanaFileName: null,
+          katanaBuffer: null,
           processingState: "idle",
           error: null,
           results: [],
@@ -163,10 +183,10 @@ export const useOPMarketingStore = create<OPMarketingState>()(
     {
       name: "op-marketing-v1",
       storage: createJSONStorage(() => idbStorage),
-      // Only persist serialisable fields — never buffers
       partialize: (state) => ({
         country: state.country,
         shopName: state.shopName,
+        selectedLang: state.selectedLang,
         results: state.results,
         matchedCount: state.matchedCount,
         skippedCount: state.skippedCount,

@@ -4,8 +4,8 @@ import { useCallback, useMemo, useState, useRef, useEffect } from "react";
 import { cn, buildSearchMatcher, exportToExcel, exportToCsv } from "@/lib/utils";
 import { useOPMarketingStore } from "@/lib/op-marketing/store";
 import { processCampaignOffers } from "@/lib/op-marketing/process";
-import { CAMPAIGN_COLUMNS } from "@/lib/op-marketing/types";
-import type { CampaignOfferRow } from "@/lib/op-marketing/types";
+import { CAMPAIGN_COLUMNS, KATANA_LANG_COLUMNS } from "@/lib/op-marketing/types";
+import type { CampaignOfferRow, KatanaLangKey } from "@/lib/op-marketing/types";
 import { StockFileSlot } from "@/app/stock-analyzer/components/shared";
 import { Button } from "@/components/ui/button";
 import {
@@ -285,6 +285,9 @@ export default function CampaignOffersTab() {
   const handleLog = useCallback(async (file: File) => {
     store.setLogFile(file.name, await file.arrayBuffer());
   }, [store]);
+  const handleKatana = useCallback(async (file: File) => {
+    store.setKatanaFile(file.name, await file.arrayBuffer());
+  }, [store]);
 
   const allFilesReady =
     !!store.disclistBuffer &&
@@ -303,7 +306,9 @@ export default function CampaignOffersTab() {
         store.disclistBuffer!,
         store.stockBuffer!,
         store.offersBuffer!,
-        store.logBuffer!
+        store.logBuffer!,
+        store.katanaBuffer,
+        store.katanaBuffer ? store.selectedLang : null
       );
       store.setResults(result.rows, result.matched, result.skipped);
       setCurrentPage(1);
@@ -439,6 +444,43 @@ export default function CampaignOffersTab() {
             onDrop={handleLog}
             onClear={store.removeLogFile}
           />
+        </div>
+
+        {/* Katana — optional, for multilingual product names */}
+        <div className="space-y-2">
+          <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider px-1">
+            Product Names
+          </h3>
+          <StockFileSlot
+            label="Katana Daily Export"
+            hint=".xlsx — optional"
+            fileName={store.katanaFileName}
+            isReady={!!store.katanaFileName}
+            onDrop={handleKatana}
+            onClear={store.removeKatanaFile}
+          />
+          {/* Language selector — only shown when Katana file is loaded */}
+          {store.katanaFileName && (
+            <div>
+              <label className="text-[11px] text-muted font-medium block mb-0.5">
+                Product Name Language
+              </label>
+              <select
+                value={store.selectedLang}
+                onChange={(e) => store.setSelectedLang(e.target.value as KatanaLangKey)}
+                className="w-full border border-edge rounded px-2.5 py-1.5 text-xs font-mono focus:outline-none focus:ring-1 focus:ring-accent/50 bg-white cursor-pointer"
+              >
+                {KATANA_LANG_COLUMNS.map((lang) => (
+                  <option key={lang.key} value={lang.key}>
+                    {lang.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[10px] text-muted/60 font-mono mt-1 px-0.5">
+                Overrides "Product title" from offers
+              </p>
+            </div>
+          )}
         </div>
 
         {hasResults && (
