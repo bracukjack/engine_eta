@@ -15,9 +15,8 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Activity,
+  Tag,
 } from "lucide-react";
-import Image from "next/image";
-
 const TOOLS = [
   {
     name: "Shopify Processor",
@@ -59,6 +58,12 @@ const TOOLS = [
     name: "PO Tracker",
     href: "/po-tracker",
     icon: Truck,
+    active: true,
+  },
+  {
+    name: "Ventee Unique",
+    href: "/ventee-unique",
+    icon: Tag,
     active: true,
   },
   {
