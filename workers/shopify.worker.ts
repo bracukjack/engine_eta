@@ -317,7 +317,10 @@ ctx.onmessage = (e: MessageEvent) => {
       // Start from existing Shopify tags (separator: ", ")
       const rawTags = String(row["Tags"] ?? "").trim();
       const existingTags = rawTags !== ""
-        ? rawTags.split(",").map((t) => t.trim()).filter(Boolean)
+        ? rawTags.split(",").map((t) => {
+            const tag = t.trim();
+            return /^coming[\s-]soon$/i.test(tag) ? "COMING SOON" : tag;
+          }).filter(Boolean)
         : [];
       // Add "Sale" tag if there is a compare-at price (i.e. product is discounted)
       const alreadyHasSaleTag = existingTags.some((t) => t.toLowerCase() === "sale");
@@ -329,6 +332,25 @@ ctx.onmessage = (e: MessageEvent) => {
       const filteredTags = hasSale
         ? existingTags.filter((t) => t.toLowerCase() !== "new")
         : existingTags;
+
+      // PRE-ORDER: add when active + qty ≤ 0 + ETA present; remove when qty > 1
+      // - COMING SOON takes priority (new/never-sold product): skip PRE-ORDER if COMING SOON is present
+      // - PRE-ORDER and NEW are mutually exclusive: remove NEW when PRE-ORDER is applied
+      const preOrderIdx = filteredTags.findIndex((t) => t.toLowerCase() === "pre-order");
+      const hasPreOrder = preOrderIdx !== -1;
+      const hasComingSoon = filteredTags.some((t) => t.toLowerCase() === "coming soon");
+
+      if (status === "active" && variantQty <= 0 && etaFinal !== null && etaFinal !== "") {
+        if (!hasComingSoon) {
+          if (!hasPreOrder) filteredTags.push("PRE-ORDER");
+          // NEW is mutually exclusive with PRE-ORDER
+          const newIdx = filteredTags.findIndex((t) => t.toLowerCase() === "new");
+          if (newIdx !== -1) filteredTags.splice(newIdx, 1);
+        }
+      } else if (variantQty > 1 && hasPreOrder) {
+        filteredTags.splice(preOrderIdx, 1);
+      }
+
       const tagsOut = filteredTags.length > 0 ? filteredTags.join(", ") : null;
 
       output.push({
