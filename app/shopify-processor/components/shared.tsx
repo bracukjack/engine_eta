@@ -7,6 +7,7 @@ import { DataTable } from "@/components/data-table/data-table";
 import { PreviewTable } from "@/components/preview-table/preview-table";
 import { Button } from "@/components/ui/button";
 import type { BatchProgress, ExportRowLimit, TableSize } from "@/lib/types";
+import { BestSellerTab } from "./best-seller-tab";
 
 export function FilterSelect({
   label,
@@ -301,8 +302,8 @@ export function RightPanel({
   setPolicyFilter: (v: "all" | "continue" | "deny") => void;
   setB2cFilter: (v: "all" | "yes" | "no") => void;
   setDupSkuFilter: (v: boolean) => void;
-  activeTab: "output" | "preview";
-  onTabChange: (t: "output" | "preview") => void;
+  activeTab: "output" | "preview" | "best-seller";
+  onTabChange: (t: "output" | "preview" | "best-seller") => void;
 }) {
   const tab = activeTab;
   const setTab = onTabChange;
@@ -343,6 +344,16 @@ export function RightPanel({
               {Object.values(previewData).filter((d) => d !== null).length}
             </span>
           )}
+        </button>
+        <button
+          onClick={() => setTab("best-seller")}
+          className={`px-4 py-2 text-[11px] font-semibold cursor-pointer transition-colors border-b-2 ${
+            tab === "best-seller"
+              ? "border-amber-500 text-primary bg-white"
+              : "border-transparent text-muted hover:bg-slate-50"
+          }`}
+        >
+          Best Seller
         </button>
       </div>
 
@@ -431,10 +442,12 @@ export function RightPanel({
       {/* Content */}
       {tab === "output" ? (
         <DataTable />
-      ) : (
+      ) : tab === "preview" ? (
         <div className="flex-1 min-h-0 flex flex-col">
           <PreviewTable />
         </div>
+      ) : (
+        <BestSellerTab />
       )}
     </>
   );
