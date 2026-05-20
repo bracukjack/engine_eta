@@ -119,7 +119,7 @@ function ShopifyProcessorInner() {
   const dupSkuSet = useMemo(() => {
     const counts = new Map<string, number>();
     for (const r of results) {
-      const sku = r["Variant SKU"];
+      const sku = r["Variant SKU"].toUpperCase();
       counts.set(sku, (counts.get(sku) ?? 0) + 1);
     }
     return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([s]) => s));
@@ -135,7 +135,7 @@ function ShopifyProcessorInner() {
     if (policyFilter !== "all") data = data.filter((r) => r["Variant Inventory Policy"] === policyFilter);
     if (b2cFilter === "yes") data = data.filter((r) => r.B2C === "Yes");
     else if (b2cFilter === "no") data = data.filter((r) => r.B2C === "No");
-    if (dupSkuFilter) data = data.filter((r) => dupSkuSet.has(r["Variant SKU"]));
+    if (dupSkuFilter) data = data.filter((r) => dupSkuSet.has(r["Variant SKU"].toUpperCase()));
     const matcher = buildSearchMatcher(search);
     if (matcher) {
       data = data.filter((r) =>

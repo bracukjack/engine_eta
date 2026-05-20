@@ -145,7 +145,7 @@ ctx.onmessage = (e: MessageEvent) => {
     // ── STEP 3: Purchase Orders ────────────────────────────────────────
     progress("Purchase Orders", 55, "Processing purchase orders...");
 
-    const etaMap = new Map<string, Date>();
+    const poBatchesMap = new Map<string, Array<{ qty: number; date: Date }>>();
     for (const row of purchaseRows) {
       const item = String(row["Item"] ?? "").trim();
       if (!item) continue;
@@ -154,13 +154,23 @@ ctx.onmessage = (e: MessageEvent) => {
       // Only keep dates strictly after today (not today itself, not past dates)
       if (!receiptDate || receiptDate <= today) continue;
 
-      const existing = etaMap.get(item);
-      if (!existing || receiptDate < existing) {
-        etaMap.set(item, receiptDate);
+      const qty = Math.round(parseNum(row["Quantity"]) ?? 0);
+      if (qty <= 0) continue;
+
+      const existing = poBatchesMap.get(item);
+      if (!existing) {
+        poBatchesMap.set(item, [{ qty, date: receiptDate }]);
+      } else {
+        existing.push({ qty, date: receiptDate });
       }
     }
 
-    progress("Purchase Orders", 65, `Found ${etaMap.size} SKUs with future ETA`);
+    // Sort each SKU's batches by receipt date ascending
+    for (const batches of poBatchesMap.values()) {
+      batches.sort((a, b) => a.date.getTime() - b.date.getTime());
+    }
+
+    progress("Purchase Orders", 65, `Found ${poBatchesMap.size} SKUs with future PO batches`);
 
     // ── STEP 4: Item Pricing ───────────────────────────────────────────
     progress("Items", 70, "Processing item pricing...");
@@ -172,10 +182,13 @@ ctx.onmessage = (e: MessageEvent) => {
       salesNum: number | null;
     }
     const itemMap = new Map<string, ItemInfo>();
+    const itemCodeCasingMap = new Map<string, string>(); // lowercase → original casing from items
 
     for (const row of itemRows) {
       const code = String(row["Code"] ?? "").trim();
       if (!code) continue;
+
+      itemCodeCasingMap.set(code.toLowerCase(), code);
 
       const retailNum = parseNum(row["Extra field:  Retail Price EUR"]);
       const salesNum = parseNum(row["SalesPrice"]);
@@ -192,7 +205,7 @@ ctx.onmessage = (e: MessageEvent) => {
         compareOut = null;
       }
 
-      itemMap.set(code, { priceOut, compareOut, discountPct, salesNum });
+      itemMap.set(code.toLowerCase(), { priceOut, compareOut, discountPct, salesNum });
     }
 
     progress("Items", 80, `Processed ${itemMap.size} items`);
@@ -209,16 +222,17 @@ ctx.onmessage = (e: MessageEvent) => {
         continue;
 
       const sku = String(skuRaw).trim();
+      const canonicalSku = itemCodeCasingMap.get(sku.toLowerCase()) ?? sku;
       const handle = String(row["Handle"] ?? "").trim();
 
       // ── GIFTCARD special rule ────────────────────────────────────────
       if (sku.toUpperCase() === "GIFTCARD") {
-        const itemInfo = itemMap.get(sku);
+        const itemInfo = itemMap.get(sku.toLowerCase());
         output.push({
           No: 0,
           Handle: handle,
           Title: String(row["Title"] ?? ""),
-          "Variant SKU": sku,
+          "Variant SKU": canonicalSku,
           "Variant Quantity": 999,
           Status: "active",
           Published: "TRUE",
@@ -259,13 +273,22 @@ ctx.onmessage = (e: MessageEvent) => {
       }
 
       // GOAL 3 — ETA
-      const etaDate = etaMap.get(sku);
+      // Simulate cumulative stock flow batch-by-batch to find when stock turns positive.
+      // ETA = receipt date of the batch that brings (stock - plannedOut + Σqty) above zero.
+      const poBatches = poBatchesMap.get(sku) ?? [];
       let etaFromPo: string | null = null;
-      if (etaDate) {
-        const dd = String(etaDate.getDate()).padStart(2, "0");
-        const mm = String(etaDate.getMonth() + 1).padStart(2, "0");
-        const yyyy = etaDate.getFullYear();
-        etaFromPo = `${dd}/${mm}/${yyyy}`;
+      if (poBatches.length > 0) {
+        let running = stockQty - plannedOut;
+        for (const batch of poBatches) {
+          running += batch.qty;
+          if (running >= 1) {
+            const dd = String(batch.date.getDate()).padStart(2, "0");
+            const mm = String(batch.date.getMonth() + 1).padStart(2, "0");
+            const yyyy = batch.date.getFullYear();
+            etaFromPo = `${dd}/${mm}/${yyyy}`;
+            break;
+          }
+        }
       }
       const existingEtaRaw = row[etaCol] ? String(row[etaCol]).trim() : null;
       // Validate existingEta: only keep if the date is strictly after today.
@@ -284,15 +307,13 @@ ctx.onmessage = (e: MessageEvent) => {
         }
       }
 
-      // Only publish ETA when net available stock (current + incoming - outgoing) is positive.
-      // If plannedOut > stockQty + plannedIn, the incoming stock is fully consumed by
-      // committed outgoing orders — no stock will actually be available for customers.
+      // etaFromPo is already null if no batch brought running total above zero.
+      // Fall back to existingEta only when there are no PO batches and net stock is positive.
       const netAvailable = stockQty + plannedIn - plannedOut;
-      const etaFinal = netAvailable > 0
-        ? (etaFromPo ?? (existingEta && existingEta !== "" ? existingEta : null))
-        : null;
+      const etaFinal = etaFromPo
+        ?? (poBatches.length === 0 && netAvailable > 0 && existingEta ? existingEta : null);
 
-      const itemInfo = itemMap.get(sku);
+      const itemInfo = itemMap.get(sku.toLowerCase());
       let variantPrice: number | null;
       let compareAtPrice: number | null;
       let discountPct: number | null;
@@ -357,7 +378,7 @@ ctx.onmessage = (e: MessageEvent) => {
         No: 0,
         Handle: handle,
         Title: String(row["Title"] ?? ""),
-        "Variant SKU": sku,
+        "Variant SKU": canonicalSku,
         "Variant Quantity": Math.round(variantQty),
         Status: status,
         Published: published,

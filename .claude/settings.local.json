@@ -11,7 +11,10 @@
       "Bash(node -e \":*)",
       "Bash(node -e ':*)",
       "Bash(yarn build *)",
-      "Bash(node -e \"const XLSX = require\\('xlsx'\\); const wb = XLSX.readFile\\('data/best_sellers_apr26.xlsx'\\); const ws = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json\\(ws, {header:1}\\); console.log\\('Sheets:', wb.SheetNames\\); console.log\\('Headers:', data[0]\\); console.log\\('Row 1:', data[1]\\); console.log\\('Row 2:', data[2]\\); console.log\\('Total rows:', data.length\\);\")"
+      "Bash(node -e \"const XLSX = require\\('xlsx'\\); const wb = XLSX.readFile\\('data/best_sellers_apr26.xlsx'\\); const ws = wb.Sheets[wb.SheetNames[0]]; const data = XLSX.utils.sheet_to_json\\(ws, {header:1}\\); console.log\\('Sheets:', wb.SheetNames\\); console.log\\('Headers:', data[0]\\); console.log\\('Row 1:', data[1]\\); console.log\\('Row 2:', data[2]\\); console.log\\('Total rows:', data.length\\);\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\User\\\\Developer\\\\engine_eta\" -Recurse -Filter \"*.ts\" -o ErrorAction SilentlyContinue)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Head -20)"
     ]
   }
 }
