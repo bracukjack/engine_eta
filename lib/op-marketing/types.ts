@@ -3,12 +3,6 @@ export interface Config {
   shopName: string;
 }
 
-export interface DiscountRow {
-  SKU: string;
-  GTIN: string;
-  DISC: string;
-}
-
 export interface StockRow {
   ItemCode: string;
   Stock: string | number;
@@ -24,6 +18,8 @@ export interface OfferRow {
 
 export interface LogRow {
   Code: string;
+  Barcode: string;
+  Class_09Description: string;
   "Extra field:  Retail Price EUR": string;
 }
 

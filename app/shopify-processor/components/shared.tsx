@@ -8,6 +8,7 @@ import { PreviewTable } from "@/components/preview-table/preview-table";
 import { Button } from "@/components/ui/button";
 import type { BatchProgress, ExportRowLimit, TableSize } from "@/lib/types";
 import { BestSellerTab } from "./best-seller-tab";
+import { MasterMappingTab } from "./master-mapping-tab";
 
 export function FilterSelect({
   label,
@@ -302,8 +303,8 @@ export function RightPanel({
   setPolicyFilter: (v: "all" | "continue" | "deny") => void;
   setB2cFilter: (v: "all" | "yes" | "no") => void;
   setDupSkuFilter: (v: boolean) => void;
-  activeTab: "output" | "preview" | "best-seller";
-  onTabChange: (t: "output" | "preview" | "best-seller") => void;
+  activeTab: "output" | "preview" | "best-seller" | "mapping";
+  onTabChange: (t: "output" | "preview" | "best-seller" | "mapping") => void;
 }) {
   const tab = activeTab;
   const setTab = onTabChange;
@@ -354,6 +355,16 @@ export function RightPanel({
           }`}
         >
           Best Seller
+        </button>
+        <button
+          onClick={() => setTab("mapping")}
+          className={`px-4 py-2 text-[11px] font-semibold cursor-pointer transition-colors border-b-2 ${
+            tab === "mapping"
+              ? "border-violet-500 text-primary bg-white"
+              : "border-transparent text-muted hover:bg-slate-50"
+          }`}
+        >
+          Master → Shopify
         </button>
       </div>
 
@@ -446,8 +457,10 @@ export function RightPanel({
         <div className="flex-1 min-h-0 flex flex-col">
           <PreviewTable />
         </div>
-      ) : (
+      ) : tab === "best-seller" ? (
         <BestSellerTab />
+      ) : (
+        <MasterMappingTab />
       )}
     </>
   );

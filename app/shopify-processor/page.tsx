@@ -34,10 +34,10 @@ export default function ShopifyProcessorPage() {
 function ShopifyProcessorInner() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const urlTab = (searchParams.get("tab") ?? "output") as "output" | "preview" | "best-seller";
+  const urlTab = (searchParams.get("tab") ?? "output") as "output" | "preview" | "best-seller" | "mapping";
   const [isPending, startTransition] = useTransition();
 
-  const setUrlTab = useCallback((t: "output" | "preview" | "best-seller") => {
+  const setUrlTab = useCallback((t: "output" | "preview" | "best-seller" | "mapping") => {
     startTransition(() => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("tab", t);

@@ -372,14 +372,12 @@ export default function CampaignOffersTab() {
   }, [store, searchTimeout]);
 
   // File handlers
-  const handleDisclist = useCallback(async (f: File) => store.setDisclistFile(f.name, await f.arrayBuffer()), [store]);
   const handleStock = useCallback(async (f: File) => store.setStockFile(f.name, await f.arrayBuffer()), [store]);
   const handleOffers = useCallback(async (f: File) => store.setOffersFile(f.name, await f.arrayBuffer()), [store]);
   const handleLog = useCallback(async (f: File) => store.setLogFile(f.name, await f.arrayBuffer()), [store]);
   const handleKatana = useCallback(async (f: File) => store.setKatanaFile(f.name, await f.arrayBuffer()), [store]);
 
   const allFilesReady =
-    !!store.disclistBuffer &&
     !!store.stockBuffer &&
     !!store.offersBuffer &&
     !!store.logBuffer &&
@@ -392,7 +390,6 @@ export default function CampaignOffersTab() {
     try {
       const result = processCampaignOffers(
         { country: store.country, shopName: store.shopName },
-        store.disclistBuffer!,
         store.stockBuffer!,
         store.offersBuffer!,
         store.logBuffer!,
@@ -556,15 +553,6 @@ export default function CampaignOffersTab() {
           <h3 className="text-[11px] font-semibold text-muted uppercase tracking-wider px-1">
             Shared Files
           </h3>
-          <StockFileSlot
-            label="Discount List"
-            hint=".xlsx"
-            required
-            fileName={store.disclistFileName}
-            isReady={!!store.disclistFileName}
-            onDrop={handleDisclist}
-            onClear={store.removeDisclistFile}
-          />
           <StockFileSlot
             label="Stock CSV"
             hint=".csv (UTF-16)"
@@ -760,7 +748,17 @@ export default function CampaignOffersTab() {
         {store.processingState === "error" && (
           <div className="mx-4 mt-3 px-3 py-2 rounded bg-red-50 border border-red-200 text-red-600 text-xs font-mono flex items-start gap-2">
             <AlertCircle size={14} className="shrink-0 mt-0.5" />
-            <span>{store.error}</span>
+            <span className="whitespace-pre-wrap">{store.error}</span>
+          </div>
+        )}
+
+        {/* Zero-result warning */}
+        {store.processingState === "success" && store.results.length === 0 && (
+          <div className="mx-4 mt-3 px-3 py-2 rounded bg-amber-50 border border-amber-200 text-amber-700 text-xs font-mono flex items-start gap-2">
+            <AlertCircle size={14} className="shrink-0 mt-0.5" />
+            <span>
+              Processing completed but no rows were matched. Check that item codes in the Item Log exist in both the Stock CSV and Offers CSV, and that "Extra field: Retail Price EUR" is filled.
+            </span>
           </div>
         )}
 

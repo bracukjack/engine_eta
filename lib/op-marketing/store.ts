@@ -11,8 +11,6 @@ interface OPMarketingState {
   setShopName: (v: string) => void;
 
   // Input files — NOT persisted (ArrayBuffer can't be serialised)
-  disclistFileName: string | null;
-  disclistBuffer: ArrayBuffer | null;
   stockFileName: string | null;
   stockBuffer: ArrayBuffer | null;
   offersFileName: string | null;
@@ -54,8 +52,6 @@ interface OPMarketingState {
   visibleColumns: string[];
 
   // File actions
-  setDisclistFile: (name: string, buf: ArrayBuffer) => void;
-  removeDisclistFile: () => void;
   setStockFile: (name: string, buf: ArrayBuffer) => void;
   removeStockFile: () => void;
   setOffersFile: (name: string, buf: ArrayBuffer) => void;
@@ -68,9 +64,6 @@ interface OPMarketingState {
   // Processing actions
   setProcessing: () => void;
   setError: (err: string) => void;
-  /**
-   * @param columnKeys  Ordered column keys from the new result rows
-   */
   setResults: (
     rows: CampaignOfferRow[],
     matched: number,
@@ -97,8 +90,6 @@ export const useOPMarketingStore = create<OPMarketingState>()(
       setCountry: (country) => set({ country }),
       setShopName: (shopName) => set({ shopName }),
 
-      disclistFileName: null,
-      disclistBuffer: null,
       stockFileName: null,
       stockBuffer: null,
       offersFileName: null,
@@ -134,11 +125,6 @@ export const useOPMarketingStore = create<OPMarketingState>()(
       sortColumn: null,
       sortDirection: "asc",
       visibleColumns: [],
-
-      setDisclistFile: (name, buf) =>
-        set({ disclistFileName: name, disclistBuffer: buf, error: null }),
-      removeDisclistFile: () =>
-        set({ disclistFileName: null, disclistBuffer: null }),
 
       setStockFile: (name, buf) =>
         set({ stockFileName: name, stockBuffer: buf, error: null }),
@@ -225,8 +211,6 @@ export const useOPMarketingStore = create<OPMarketingState>()(
 
       resetAll: () =>
         set({
-          disclistFileName: null,
-          disclistBuffer: null,
           stockFileName: null,
           stockBuffer: null,
           offersFileName: null,
