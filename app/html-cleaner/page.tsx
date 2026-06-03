@@ -15,12 +15,16 @@ import {
   Download,
   AlertTriangle,
   Wand2,
+  Type,
+  Copy,
+  Check,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type FileExt = "csv" | "xlsx";
 type ExportFormat = "csv" | "xlsx";
+type ActiveTab = "file" | "text";
 
 interface FileState {
   id: string;
@@ -47,19 +51,12 @@ export function cleanHtml(str: string): string {
   return decoded.replace(/\s+/g, " ").trim();
 }
 
-/**
- * Returns true if a sample of values contains HTML tags OR HTML entities.
- * Catches columns from Rich Text Editors that may have tags, encoded
- * characters like &eacute;, or both.
- */
 function looksLikeHtml(values: string[]): boolean {
   const sample = values.slice(0, 100).filter(Boolean);
   if (sample.length === 0) return false;
-
   const hasTag = (v: string) => /<[a-zA-Z/][^>]*>/.test(v);
   const hasEntity = (v: string) =>
     /&[a-zA-Z]{2,8};|&#\d{1,6};|&#x[0-9a-fA-F]{1,6};/.test(v);
-
   const count = sample.filter((v) => hasTag(v) || hasEntity(v)).length;
   return count / sample.length >= 0.05;
 }
@@ -98,7 +95,6 @@ async function parseUploadedFile(
   } catch {
     text = new TextDecoder("iso-8859-1").decode(buffer);
   }
-  // Strip UTF-8 BOM (\uFEFF) which causes ï»¿ prefix on column names
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 
   const result = Papa.parse<Record<string, string>>(text, {
@@ -140,7 +136,6 @@ async function downloadCleaned(fState: FileState, format: ExportFormat) {
 
   if (format === "csv") {
     const Papa = (await import("papaparse")).default;
-    // Semicolon delimiter + UTF-8 BOM → Excel opens columns correctly in all locales
     const csv = Papa.unparse(cleaned, {
       columns: fState.columns,
       delimiter: ";",
@@ -197,11 +192,33 @@ const genId = () => `hc-${++_id}`;
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function HtmlCleanerPage() {
+  const [activeTab, setActiveTab] = useState<ActiveTab>("file");
+
+  // File tab state
   const [files, setFiles] = useState<FileState[]>([]);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
   const [format, setFormat] = useState<ExportFormat>("xlsx");
 
+  // Text tab state
+  const [inputText, setInputText] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  const cleanedText = cleanHtml(inputText);
+  const hasTextInput = inputText.trim().length > 0;
+
+  const handleCopy = useCallback(async () => {
+    if (!cleanedText) return;
+    await navigator.clipboard.writeText(cleanedText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [cleanedText]);
+
+  const handleClearText = useCallback(() => {
+    setInputText("");
+  }, []);
+
+  // File tab handlers
   const onDrop = useCallback(
     async (accepted: File[]) => {
       setUploadError(null);
@@ -322,153 +339,274 @@ export default function HtmlCleanerPage() {
             HTML Tag Cleaner
           </h1>
 
-          <Button
-            variant="accent"
-            size="sm"
-            onClick={handleDownloadAll}
-            disabled={!anySelected || downloading}
-          >
-            <Wand2 size={12} className="mr-1.5" />
-            {downloading ? "Downloading…" : "Clean & Download All"}
-          </Button>
+          {/* Tab switcher */}
+          <div className="flex items-center gap-1 bg-panel border border-edge rounded-md p-0.5">
+            <button
+              onClick={() => setActiveTab("file")}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-2.5 h-6 text-[11px] font-semibold rounded transition-colors",
+                activeTab === "file"
+                  ? "bg-white text-primary shadow-sm border border-edge"
+                  : "text-muted hover:text-primary"
+              )}
+            >
+              <Upload size={10} />
+              File
+            </button>
+            <button
+              onClick={() => setActiveTab("text")}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-2.5 h-6 text-[11px] font-semibold rounded transition-colors",
+                activeTab === "text"
+                  ? "bg-white text-primary shadow-sm border border-edge"
+                  : "text-muted hover:text-primary"
+              )}
+            >
+              <Type size={10} />
+              Text
+            </button>
+          </div>
 
-          <FormatToggle value={format} onChange={setFormat} />
+          {/* File tab actions */}
+          {activeTab === "file" && (
+            <>
+              <Button
+                variant="accent"
+                size="sm"
+                onClick={handleDownloadAll}
+                disabled={!anySelected || downloading}
+              >
+                <Wand2 size={12} className="mr-1.5" />
+                {downloading ? "Downloading…" : "Clean & Download All"}
+              </Button>
 
-          {format === "csv" && (
-            <span className="text-[11px] text-muted font-mono">
-              semicolon-separated · Excel-ready
-            </span>
-          )}
+              <FormatToggle value={format} onChange={setFormat} />
 
-          {files.length > 0 && (
-            <span className="text-xs text-muted font-mono ml-auto">
-              {files.length} file{files.length !== 1 ? "s" : ""}
-              {anySelected && (
-                <span className="ml-1 text-accent">
-                  ·{" "}
-                  {files.reduce((n, f) => n + f.selectedColumns.size, 0)} col
-                  {files.reduce((n, f) => n + f.selectedColumns.size, 0) !== 1
-                    ? "s"
-                    : ""}{" "}
-                  selected
+              {format === "csv" && (
+                <span className="text-[11px] text-muted font-mono">
+                  semicolon-separated · Excel-ready
                 </span>
               )}
-            </span>
+
+              {files.length > 0 && (
+                <span className="text-xs text-muted font-mono ml-auto">
+                  {files.length} file{files.length !== 1 ? "s" : ""}
+                  {anySelected && (
+                    <span className="ml-1 text-accent">
+                      ·{" "}
+                      {files.reduce((n, f) => n + f.selectedColumns.size, 0)} col
+                      {files.reduce((n, f) => n + f.selectedColumns.size, 0) !== 1
+                        ? "s"
+                        : ""}{" "}
+                      selected
+                    </span>
+                  )}
+                </span>
+              )}
+            </>
+          )}
+
+          {/* Text tab actions */}
+          {activeTab === "text" && hasTextInput && (
+            <>
+              <Button
+                variant="accent"
+                size="sm"
+                onClick={handleCopy}
+                disabled={!cleanedText}
+              >
+                {copied ? (
+                  <Check size={12} className="mr-1.5" />
+                ) : (
+                  <Copy size={12} className="mr-1.5" />
+                )}
+                {copied ? "Copied!" : "Copy Result"}
+              </Button>
+              <button
+                onClick={handleClearText}
+                className="text-[11px] text-muted hover:text-primary transition-colors"
+              >
+                Clear
+              </button>
+            </>
           )}
         </div>
       </div>
 
       {/* ── Scrollable Body ──────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {/* Upload Zone */}
-        <div
-          {...getRootProps()}
-          className={cn(
-            "border-2 border-dashed rounded-lg p-8 cursor-pointer transition-all duration-200 text-center select-none",
-            isDragActive
-              ? "border-accent bg-blue-50 animate-drop scale-[1.005]"
-              : files.length >= 10
-                ? "border-edge bg-panel opacity-50 cursor-not-allowed"
-                : "border-edge hover:border-accent/40 bg-surface"
-          )}
-        >
-          <input {...getInputProps()} disabled={files.length >= 10} />
-          <Upload
-            size={22}
-            className={cn(
-              "mx-auto mb-2.5 transition-colors",
-              isDragActive ? "text-accent" : "text-muted"
-            )}
-          />
-          <p className="text-sm font-medium text-primary">
-            {isDragActive
-              ? "Drop to add files"
-              : files.length >= 10
-                ? "Maximum 10 files reached"
-                : "Drag & drop files, or click to browse"}
-          </p>
-          <p className="text-[11px] text-muted mt-1 font-mono">
-            .csv · .xlsx — up to 10 files
-          </p>
-        </div>
 
-        {/* Inline error */}
-        {uploadError && (
-          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-700">
-            <AlertTriangle size={12} className="shrink-0" />
-            {uploadError}
-          </div>
-        )}
-
-        {/* Uploaded file list */}
-        {files.length > 0 && (
-          <div className="bg-surface border border-edge rounded-lg overflow-hidden">
-            <div className="px-4 py-2 border-b border-edge bg-panel">
-              <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">
-                Uploaded Files
-              </span>
-            </div>
-            {files.map((f, i) => (
-              <div
-                key={f.id}
+        {/* ── FILE TAB ──────────────────────────────────────────────────── */}
+        {activeTab === "file" && (
+          <>
+            {/* Upload Zone */}
+            <div
+              {...getRootProps()}
+              className={cn(
+                "border-2 border-dashed rounded-lg p-8 cursor-pointer transition-all duration-200 text-center select-none",
+                isDragActive
+                  ? "border-accent bg-blue-50 animate-drop scale-[1.005]"
+                  : files.length >= 10
+                    ? "border-edge bg-panel opacity-50 cursor-not-allowed"
+                    : "border-edge hover:border-accent/40 bg-surface"
+              )}
+            >
+              <input {...getInputProps()} disabled={files.length >= 10} />
+              <Upload
+                size={22}
                 className={cn(
-                  "px-4 py-2.5 flex items-center gap-2.5",
-                  i < files.length - 1 && "border-b border-edge"
+                  "mx-auto mb-2.5 transition-colors",
+                  isDragActive ? "text-accent" : "text-muted"
                 )}
-              >
-                <FileText size={14} className="text-muted shrink-0" />
-                <span className="text-xs font-mono text-primary flex-1 truncate">
-                  {f.file.name}
-                </span>
-                <Badge variant="muted">
-                  {f.rows.length.toLocaleString()} rows
-                </Badge>
-                <Badge variant="default">
-                  {f.columns.length} col{f.columns.length !== 1 ? "s" : ""}
-                </Badge>
-                {f.htmlColumns.size > 0 && (
-                  <Badge variant="continue">
-                    {f.htmlColumns.size} HTML detected
-                  </Badge>
-                )}
-                <button
-                  onClick={() => removeFile(f.id)}
-                  className="p-1 rounded text-muted hover:text-red-500 transition-colors shrink-0"
-                  data-tooltip="Remove file"
-                >
-                  <X size={12} />
-                </button>
+              />
+              <p className="text-sm font-medium text-primary">
+                {isDragActive
+                  ? "Drop to add files"
+                  : files.length >= 10
+                    ? "Maximum 10 files reached"
+                    : "Drag & drop files, or click to browse"}
+              </p>
+              <p className="text-[11px] text-muted mt-1 font-mono">
+                .csv · .xlsx — up to 10 files
+              </p>
+            </div>
+
+            {/* Inline error */}
+            {uploadError && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-md text-xs text-amber-700">
+                <AlertTriangle size={12} className="shrink-0" />
+                {uploadError}
               </div>
+            )}
+
+            {/* Uploaded file list */}
+            {files.length > 0 && (
+              <div className="bg-surface border border-edge rounded-lg overflow-hidden">
+                <div className="px-4 py-2 border-b border-edge bg-panel">
+                  <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">
+                    Uploaded Files
+                  </span>
+                </div>
+                {files.map((f, i) => (
+                  <div
+                    key={f.id}
+                    className={cn(
+                      "px-4 py-2.5 flex items-center gap-2.5",
+                      i < files.length - 1 && "border-b border-edge"
+                    )}
+                  >
+                    <FileText size={14} className="text-muted shrink-0" />
+                    <span className="text-xs font-mono text-primary flex-1 truncate">
+                      {f.file.name}
+                    </span>
+                    <Badge variant="muted">
+                      {f.rows.length.toLocaleString()} rows
+                    </Badge>
+                    <Badge variant="default">
+                      {f.columns.length} col{f.columns.length !== 1 ? "s" : ""}
+                    </Badge>
+                    {f.htmlColumns.size > 0 && (
+                      <Badge variant="continue">
+                        {f.htmlColumns.size} HTML detected
+                      </Badge>
+                    )}
+                    <button
+                      onClick={() => removeFile(f.id)}
+                      className="p-1 rounded text-muted hover:text-red-500 transition-colors shrink-0"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Per-file column selectors */}
+            {files.map((fState) => (
+              <FilePanel
+                key={fState.id}
+                fState={fState}
+                format={format}
+                onToggleColumn={toggleColumn}
+                onSelectAll={selectAll}
+                onDeselectAll={deselectAll}
+                onSearchChange={(id, q) => patchFile(id, { columnSearch: q })}
+                onTogglePreview={(id) =>
+                  patchFile(id, { showPreview: !fState.showPreview })
+                }
+                onDownload={downloadCleaned}
+              />
             ))}
-          </div>
+
+            {/* Empty state */}
+            {files.length === 0 && (
+              <div className="text-center py-12">
+                <p className="text-sm text-muted">
+                  Upload CSV or XLSX files to get started.
+                </p>
+                <p className="text-xs text-muted/60 mt-1">
+                  HTML tags and entities will be stripped from selected columns.
+                </p>
+              </div>
+            )}
+          </>
         )}
 
-        {/* Per-file column selectors */}
-        {files.map((fState) => (
-          <FilePanel
-            key={fState.id}
-            fState={fState}
-            format={format}
-            onToggleColumn={toggleColumn}
-            onSelectAll={selectAll}
-            onDeselectAll={deselectAll}
-            onSearchChange={(id, q) => patchFile(id, { columnSearch: q })}
-            onTogglePreview={(id) =>
-              patchFile(id, { showPreview: !fState.showPreview })
-            }
-            onDownload={downloadCleaned}
-          />
-        ))}
+        {/* ── TEXT TAB ──────────────────────────────────────────────────── */}
+        {activeTab === "text" && (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {/* Input */}
+            <div className="bg-surface border border-edge rounded-lg overflow-hidden flex flex-col">
+              <div className="px-4 py-2 border-b border-edge bg-panel flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">
+                  Input — HTML
+                </span>
+                {inputText && (
+                  <span className="text-[11px] font-mono text-muted">
+                    {inputText.length.toLocaleString()} chars
+                  </span>
+                )}
+              </div>
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Paste HTML content here…"
+                className="flex-1 w-full min-h-[360px] px-4 py-3 text-xs font-mono text-primary bg-transparent resize-none focus:outline-none placeholder:text-muted"
+              />
+            </div>
 
-        {/* Empty state */}
-        {files.length === 0 && (
-          <div className="text-center py-12">
-            <p className="text-sm text-muted">
-              Upload CSV or XLSX files to get started.
-            </p>
-            <p className="text-xs text-muted/60 mt-1">
-              HTML tags and entities will be stripped from selected columns.
-            </p>
+            {/* Output */}
+            <div className="bg-surface border border-edge rounded-lg overflow-hidden flex flex-col">
+              <div className="px-4 py-2 border-b border-edge bg-panel flex items-center justify-between">
+                <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">
+                  Output — Plain Text
+                </span>
+                {cleanedText && (
+                  <span className="text-[11px] font-mono text-muted">
+                    {cleanedText.length.toLocaleString()} chars
+                  </span>
+                )}
+              </div>
+              {hasTextInput ? (
+                <div
+                  className="flex-1 px-4 py-3 text-xs font-mono text-primary whitespace-pre-wrap break-words min-h-[360px] cursor-text select-text"
+                  onClick={handleCopy}
+                  title="Click to copy"
+                >
+                  {cleanedText || (
+                    <span className="text-muted italic">
+                      Nothing left after cleaning.
+                    </span>
+                  )}
+                </div>
+              ) : (
+                <div className="flex-1 flex items-center justify-center min-h-[360px]">
+                  <p className="text-xs text-muted">
+                    Output will appear here.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -521,7 +659,6 @@ function FilePanel({
 
   return (
     <div className="bg-surface border border-edge rounded-lg overflow-hidden">
-      {/* Section header */}
       <div className="px-4 py-3 border-b border-edge bg-panel flex items-center gap-2 flex-wrap">
         <FileText size={13} className="text-muted shrink-0" />
         <span className="text-xs font-semibold text-primary flex-1 truncate font-mono">
@@ -566,7 +703,6 @@ function FilePanel({
         </div>
       </div>
 
-      {/* Column selector */}
       <div className="px-4 py-3 space-y-2.5">
         <div className="flex items-center gap-2">
           <input
@@ -635,7 +771,6 @@ function FilePanel({
         </div>
       </div>
 
-      {/* Preview hint when closed or no selection */}
       {fState.showPreview && !canPreview && (
         <div className="border-t border-edge px-4 py-3 text-xs text-muted">
           {fState.selectedColumns.size === 0
@@ -701,12 +836,7 @@ function PreviewPanel({ fState }: { fState: FileState }) {
                       key={col}
                       className="px-3 py-1.5 font-mono text-red-700 max-w-xs"
                     >
-                      <span
-                        className="block truncate"
-                        data-tooltip={row[col] ?? ""}
-                      >
-                        {row[col] ?? ""}
-                      </span>
+                      <span className="block truncate">{row[col] ?? ""}</span>
                     </td>
                   ))}
                 </tr>
