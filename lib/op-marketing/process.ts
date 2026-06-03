@@ -106,15 +106,15 @@ export function processCampaignOffers(
   const logText = new TextDecoder("utf-16").decode(logBuffer);
 
   const stock = Papa.parse<StockRow>(stockText, { header: true, skipEmptyLines: true }).data;
-  validateColumns(stock as Record<string, unknown>[], ["ItemCode", "Stock", "PlannedOutStock"], "Stock CSV (UTF-16)");
+  validateColumns(stock as unknown as Record<string, unknown>[], ["ItemCode", "Stock", "PlannedOutStock"], "Stock CSV (UTF-16)");
 
   const offers = Papa.parse<OfferRow>(offersText, {
     header: true, skipEmptyLines: true, delimiter: ";",
   }).data;
-  validateColumns(offers as Record<string, unknown>[], ["Offer SKU", "Product SKU", "Product"], "Offers CSV");
+  validateColumns(offers as unknown as Record<string, unknown>[], ["Offer SKU", "Product SKU", "Product"], "Offers CSV");
 
   const log = Papa.parse<LogRow>(logText, { header: true, skipEmptyLines: true }).data;
-  validateColumns(log as Record<string, unknown>[], [
+  validateColumns(log as unknown as Record<string, unknown>[], [
     "Code", "Barcode", "Class_09Description", "Extra field:  Retail Price EUR",
   ], "Item Log CSV (UTF-16)");
 
