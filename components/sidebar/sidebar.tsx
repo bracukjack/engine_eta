@@ -16,6 +16,7 @@ import {
   PanelLeftOpen,
   Activity,
   Tag,
+  Code2,
 } from "lucide-react";
 const TOOLS = [
   {
@@ -64,6 +65,12 @@ const TOOLS = [
     name: "Ventee Unique",
     href: "/ventee-unique",
     icon: Tag,
+    active: true,
+  },
+  {
+    name: "HTML Cleaner",
+    href: "/html-cleaner",
+    icon: Code2,
     active: true,
   },
   {
