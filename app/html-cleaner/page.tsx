@@ -2,6 +2,7 @@
 
 import { useState, useCallback, Fragment } from "react";
 import { useDropzone } from "react-dropzone";
+import he from "he";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -39,38 +40,27 @@ function stripHtmlTags(str: string): string {
   return str.replace(/<[^>]*>/g, "");
 }
 
-function decodeHtmlEntities(str: string): string {
-  return str
-    .replace(/&amp;/gi, "&")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/&lt;/gi, "<")
-    .replace(/&gt;/gi, ">")
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;|&#x27;/gi, "'")
-    .replace(/&hellip;/gi, "…")
-    .replace(/&mdash;/gi, "—")
-    .replace(/&ndash;/gi, "–")
-    .replace(/&laquo;/gi, "«")
-    .replace(/&raquo;/gi, "»")
-    .replace(/&#(\d+);/g, (_, code: string) =>
-      String.fromCharCode(parseInt(code, 10))
-    )
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) =>
-      String.fromCharCode(parseInt(hex, 16))
-    );
-}
-
 export function cleanHtml(str: string): string {
   if (!str) return str;
   const stripped = stripHtmlTags(str);
-  const decoded = decodeHtmlEntities(stripped);
+  const decoded = he.decode(stripped);
   return decoded.replace(/\s+/g, " ").trim();
 }
 
+/**
+ * Returns true if a sample of values contains HTML tags OR HTML entities.
+ * Catches columns from Rich Text Editors that may have tags, encoded
+ * characters like &eacute;, or both.
+ */
 function looksLikeHtml(values: string[]): boolean {
   const sample = values.slice(0, 100).filter(Boolean);
   if (sample.length === 0) return false;
-  const count = sample.filter((v) => /<[a-zA-Z/][^>]*>/.test(v)).length;
+
+  const hasTag = (v: string) => /<[a-zA-Z/][^>]*>/.test(v);
+  const hasEntity = (v: string) =>
+    /&[a-zA-Z]{2,8};|&#\d{1,6};|&#x[0-9a-fA-F]{1,6};/.test(v);
+
+  const count = sample.filter((v) => hasTag(v) || hasEntity(v)).length;
   return count / sample.length >= 0.05;
 }
 
@@ -108,6 +98,7 @@ async function parseUploadedFile(
   } catch {
     text = new TextDecoder("iso-8859-1").decode(buffer);
   }
+  // Strip UTF-8 BOM (\uFEFF) which causes ï»¿ prefix on column names
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
 
   const result = Papa.parse<Record<string, string>>(text, {
@@ -154,7 +145,7 @@ async function downloadCleaned(fState: FileState, format: ExportFormat) {
       columns: fState.columns,
       delimiter: ";",
     });
-    const blob = new Blob(["﻿" + csv], {
+    const blob = new Blob(["\uFEFF" + csv], {
       type: "text/csv;charset=utf-8;",
     });
     triggerDownload(blob, `${outName}.csv`);
@@ -341,7 +332,6 @@ export default function HtmlCleanerPage() {
             {downloading ? "Downloading…" : "Clean & Download All"}
           </Button>
 
-          {/* Format toggle */}
           <FormatToggle value={format} onChange={setFormat} />
 
           {format === "csv" && (
@@ -554,7 +544,6 @@ function FilePanel({
           Preview
         </Button>
 
-        {/* Per-file download: two small buttons CSV / XLSX */}
         <div className="flex items-center gap-1 shrink-0">
           {(["xlsx", "csv"] as ExportFormat[]).map((fmt) => (
             <button
