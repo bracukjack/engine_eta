@@ -57,18 +57,26 @@ export function BestSellerTab() {
         if (sku) bsSkuSet.add(sku);
       }
 
-      // Parse raw Shopify export → match by Variant SKU
+      // Parse raw Shopify export → include ALL products, flag best sellers
       const shopifyBuf = await shopifyFile.arrayBuffer();
       const shopifyRows = await parseFileBuffer(shopifyBuf);
 
       // Deduplicate by Handle — tag is product-level
-      // collect title and existing tags from first row per handle
-      const handleMap = new Map<string, { handle: string; title: string; sku: string; existingTags: string }>();
+      // collect title and existing tags from first row per handle.
+      // isBestSeller is true if ANY variant of the handle matches a best-seller SKU.
+      const handleMap = new Map<
+        string,
+        { handle: string; title: string; sku: string; existingTags: string; isBestSeller: boolean }
+      >();
+      // Track which best-seller SKUs were matched to a Shopify variant
+      const foundBsSkus = new Set<string>();
       for (const row of shopifyRows) {
         const sku = String(row["Variant SKU"] ?? "").trim().toUpperCase();
         const handle = String(row["Handle"] ?? "").trim();
-        if (!sku || !handle) continue;
-        if (!bsSkuSet.has(sku)) continue;
+        if (!handle) continue;
+
+        const isBs = !!sku && bsSkuSet.has(sku);
+        if (isBs) foundBsSkus.add(sku);
 
         if (!handleMap.has(handle)) {
           handleMap.set(handle, {
@@ -76,27 +84,34 @@ export function BestSellerTab() {
             title: String(row["Title"] ?? "").trim(),
             sku,
             existingTags: String(row["Tags"] ?? "").trim(),
+            isBestSeller: isBs,
           });
         } else {
           const existing = handleMap.get(handle)!;
           if (!existing.title) existing.title = String(row["Title"] ?? "").trim();
           // tags only appear on the first product row; keep whichever is non-empty
           if (!existing.existingTags) existing.existingTags = String(row["Tags"] ?? "").trim();
+          // prefer keeping a matched best-seller SKU on the row
+          if (isBs && !existing.isBestSeller) {
+            existing.isBestSeller = true;
+            existing.sku = sku;
+          } else if (!existing.sku && sku) {
+            existing.sku = sku;
+          }
         }
       }
 
-      // Determine which SKUs were not found
-      const foundSkus = new Set(Array.from(handleMap.values()).map((r) => r.sku));
-      const missing = Array.from(bsSkuSet).filter((s) => !foundSkus.has(s));
+      // Determine which best-seller SKUs were not found in the Shopify export
+      const missing = Array.from(bsSkuSet).filter((s) => !foundBsSkus.has(s));
       setNotFound(missing);
 
       const output: BestSellerRow[] = Array.from(handleMap.values()).map((r) => {
-        // Merge "Best Seller" into existing tags without duplicating
         const existing = r.existingTags
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean);
-        if (!existing.some((t) => t.toLowerCase() === "best seller")) {
+        // Merge "Best Seller" into existing tags only for matched products
+        if (r.isBestSeller && !existing.some((t) => t.toLowerCase() === "best seller")) {
           existing.push("Best Seller");
         }
         return {
@@ -241,7 +256,9 @@ export function BestSellerTab() {
               Export CSV
             </Button>
             <span className="text-[11px] text-muted font-mono">
-              {results.length} product{results.length !== 1 ? "s" : ""} matched
+              {results.length} product{results.length !== 1 ? "s" : ""} ·{" "}
+              {results.filter((r) => r.tags.split(",").some((t) => t.trim().toLowerCase() === "best seller")).length}{" "}
+              best seller
             </span>
           </>
         )}
