@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Download, FileSpreadsheet, Loader2, ChevronDown, X } from "lucide-react";
+import { Download, FileSpreadsheet, Loader2, ChevronDown, X, Tags, Check } from "lucide-react";
 import { useAppStore } from "@/lib/store";
 import { DataTable } from "@/components/data-table/data-table";
 import { PreviewTable } from "@/components/preview-table/preview-table";
@@ -50,6 +50,109 @@ export function FilterChip({ label, onRemove }: { label: string; onRemove: () =>
         <X size={10} />
       </button>
     </span>
+  );
+}
+
+export function TagFilter({
+  availableTags,
+  selected,
+  onChange,
+}: {
+  availableTags: string[];
+  selected: string[];
+  onChange: (tags: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        panelRef.current &&
+        !panelRef.current.contains(e.target as Node) &&
+        btnRef.current &&
+        !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const toggle = (tag: string) =>
+    onChange(
+      selected.includes(tag)
+        ? selected.filter((t) => t !== tag)
+        : [...selected, tag]
+    );
+
+  return (
+    <div className="relative">
+      <button
+        ref={btnRef}
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-medium rounded border cursor-pointer transition-colors ${
+          selected.length > 0
+            ? "bg-accent text-white border-accent"
+            : "bg-white text-muted border-edge hover:bg-slate-50"
+        }`}
+      >
+        <Tags size={12} />
+        Tags
+        {selected.length > 0 && (
+          <span className="text-[9px] font-mono rounded px-1 bg-white/20 text-white">
+            {selected.length}
+          </span>
+        )}
+        <ChevronDown size={10} />
+      </button>
+
+      {open && (
+        <div
+          ref={panelRef}
+          className="absolute top-full left-0 mt-1 z-50 w-52 bg-white border border-edge rounded-lg shadow-lg py-1"
+        >
+          {selected.length > 0 && (
+            <div className="flex items-center px-2 py-1.5 border-b border-edge">
+              <button
+                onClick={() => onChange([])}
+                className="text-[11px] text-accent hover:underline cursor-pointer"
+              >
+                Clear All
+              </button>
+            </div>
+          )}
+          <div className="max-h-72 overflow-y-auto py-1">
+            {availableTags.length === 0 ? (
+              <div className="px-3 py-2 text-[11px] text-muted">No tags found</div>
+            ) : (
+              availableTags.map((tag) => {
+                const checked = selected.includes(tag);
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => toggle(tag)}
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-left text-xs hover:bg-slate-50 transition-colors cursor-pointer"
+                  >
+                    <span
+                      className={`flex items-center justify-center w-4 h-4 rounded border shrink-0 ${
+                        checked ? "bg-accent border-accent text-white" : "border-edge bg-white"
+                      }`}
+                    >
+                      {checked && <Check size={10} strokeWidth={3} />}
+                    </span>
+                    <span className="text-primary truncate">{tag}</span>
+                  </button>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -280,12 +383,15 @@ export function RightPanel({
   b2cFilter,
   dupSkuFilter,
   dupSkuCount,
+  tagsFilter,
+  availableTags,
   setStatusFilter,
   setEtaFilter,
   setDiscountFilter,
   setPolicyFilter,
   setB2cFilter,
   setDupSkuFilter,
+  setTagsFilter,
   activeTab,
   onTabChange,
 }: {
@@ -297,12 +403,15 @@ export function RightPanel({
   b2cFilter: string;
   dupSkuFilter: boolean;
   dupSkuCount: number;
+  tagsFilter: string[];
+  availableTags: string[];
   setStatusFilter: (v: "all" | "active" | "draft") => void;
   setEtaFilter: (v: "all" | "yes" | "no") => void;
   setDiscountFilter: (v: "all" | "yes" | "no") => void;
   setPolicyFilter: (v: "all" | "continue" | "deny") => void;
   setB2cFilter: (v: "all" | "yes" | "no") => void;
   setDupSkuFilter: (v: boolean) => void;
+  setTagsFilter: (tags: string[]) => void;
   activeTab: "output" | "preview" | "best-seller" | "mapping";
   onTabChange: (t: "output" | "preview" | "best-seller" | "mapping") => void;
 }) {
@@ -437,14 +546,26 @@ export function RightPanel({
               </span>
             )}
           </button>
+          <TagFilter
+            availableTags={availableTags}
+            selected={tagsFilter}
+            onChange={setTagsFilter}
+          />
           {isFiltered && (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
               {statusFilter !== "all" && <FilterChip label={`Status: ${statusFilter}`} onRemove={() => setStatusFilter("all")} />}
               {etaFilter !== "all" && <FilterChip label={`ETA: ${etaFilter}`} onRemove={() => setEtaFilter("all")} />}
               {discountFilter !== "all" && <FilterChip label={`Discount: ${discountFilter}`} onRemove={() => setDiscountFilter("all")} />}
               {policyFilter !== "all" && <FilterChip label={`Policy: ${policyFilter}`} onRemove={() => setPolicyFilter("all")} />}
               {b2cFilter !== "all" && <FilterChip label={`B2C: ${b2cFilter}`} onRemove={() => setB2cFilter("all")} />}
               {dupSkuFilter && <FilterChip label="Dup SKU" onRemove={() => setDupSkuFilter(false)} />}
+              {tagsFilter.map((t) => (
+                <FilterChip
+                  key={t}
+                  label={`Tag: ${t}`}
+                  onRemove={() => setTagsFilter(tagsFilter.filter((x) => x !== t))}
+                />
+              ))}
             </div>
           )}
         </div>

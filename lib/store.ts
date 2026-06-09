@@ -39,6 +39,7 @@ interface AppStore {
   policyFilter: "all" | "continue" | "deny";
   b2cFilter: "all" | "yes" | "no";
   dupSkuFilter: boolean;
+  tagsFilter: string[];
   search: string;
   setStatusFilter: (f: "all" | "active" | "draft") => void;
   setEtaFilter: (f: "all" | "yes" | "no") => void;
@@ -46,6 +47,7 @@ interface AppStore {
   setPolicyFilter: (f: "all" | "continue" | "deny") => void;
   setB2cFilter: (f: "all" | "yes" | "no") => void;
   setDupSkuFilter: (v: boolean) => void;
+  setTagsFilter: (tags: string[]) => void;
   setSearch: (s: string) => void;
 
   // ── Column Visibility ──────────────────────────────────────────────
@@ -152,6 +154,7 @@ export const useAppStore = create<AppStore>()(
   policyFilter: "all",
   b2cFilter: "all",
   dupSkuFilter: false,
+  tagsFilter: [],
   search: "",
   setStatusFilter: (f) => set({ statusFilter: f }),
   setEtaFilter: (f) => set({ etaFilter: f }),
@@ -159,6 +162,7 @@ export const useAppStore = create<AppStore>()(
   setPolicyFilter: (f) => set({ policyFilter: f }),
   setB2cFilter: (f) => set({ b2cFilter: f }),
   setDupSkuFilter: (v) => set({ dupSkuFilter: v }),
+  setTagsFilter: (tags) => set({ tagsFilter: tags }),
   setSearch: (s) => set({ search: s }),
 
   // Column Visibility

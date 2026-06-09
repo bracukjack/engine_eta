@@ -51,10 +51,17 @@ export function BestSellerTab() {
       // Parse best seller file → collect SKU set
       const bsBuf = await bsFile.arrayBuffer();
       const bsRows = await parseFileBuffer(bsBuf);
+      // bsSkuSet holds upper-cased SKUs for case-insensitive matching only.
+      // bsSkuOriginal maps the upper-cased key back to its original casing so the
+      // "not found" warning shows the SKU exactly as it appears in the input file.
       const bsSkuSet = new Set<string>();
+      const bsSkuOriginal = new Map<string, string>();
       for (const row of bsRows) {
-        const sku = String(row["SKU"] ?? "").trim().toUpperCase();
-        if (sku) bsSkuSet.add(sku);
+        const raw = String(row["SKU"] ?? "").trim();
+        if (!raw) continue;
+        const up = raw.toUpperCase();
+        bsSkuSet.add(up);
+        if (!bsSkuOriginal.has(up)) bsSkuOriginal.set(up, raw);
       }
 
       // Parse raw Shopify export → include ALL products, flag best sellers
@@ -71,12 +78,15 @@ export function BestSellerTab() {
       // Track which best-seller SKUs were matched to a Shopify variant
       const foundBsSkus = new Set<string>();
       for (const row of shopifyRows) {
-        const sku = String(row["Variant SKU"] ?? "").trim().toUpperCase();
+        // Preserve the SKU exactly as it appears in the input file — never change
+        // its characters or case. Upper-casing is used for matching only.
+        const sku = String(row["Variant SKU"] ?? "").trim();
+        const skuUpper = sku.toUpperCase();
         const handle = String(row["Handle"] ?? "").trim();
         if (!handle) continue;
 
-        const isBs = !!sku && bsSkuSet.has(sku);
-        if (isBs) foundBsSkus.add(sku);
+        const isBs = !!skuUpper && bsSkuSet.has(skuUpper);
+        if (isBs) foundBsSkus.add(skuUpper);
 
         if (!handleMap.has(handle)) {
           handleMap.set(handle, {
@@ -102,7 +112,9 @@ export function BestSellerTab() {
       }
 
       // Determine which best-seller SKUs were not found in the Shopify export
-      const missing = Array.from(bsSkuSet).filter((s) => !foundBsSkus.has(s));
+      const missing = Array.from(bsSkuSet)
+        .filter((s) => !foundBsSkus.has(s))
+        .map((s) => bsSkuOriginal.get(s) ?? s);
       setNotFound(missing);
 
       const output: BestSellerRow[] = Array.from(handleMap.values()).map((r) => {

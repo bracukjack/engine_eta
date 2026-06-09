@@ -66,6 +66,8 @@ function ShopifyProcessorInner() {
   const policyFilter = useAppStore((s) => s.policyFilter);
   const b2cFilter = useAppStore((s) => s.b2cFilter);
   const dupSkuFilter = useAppStore((s) => s.dupSkuFilter);
+  const tagsFilter = useAppStore((s) => s.tagsFilter);
+  const setTagsFilter = useAppStore((s) => s.setTagsFilter);
   const search = useAppStore((s) => s.search);
   const setSearch = useAppStore((s) => s.setSearch);
   const setStatusFilter = useAppStore((s) => s.setStatusFilter);
@@ -125,6 +127,21 @@ function ShopifyProcessorInner() {
     return new Set([...counts.entries()].filter(([, n]) => n > 1).map(([s]) => s));
   }, [results]);
 
+  // Unique tags present across all output rows (case-insensitive dedup, original casing kept)
+  const availableTags = useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const r of results) {
+      if (!r.Tags) continue;
+      for (const raw of r.Tags.split(",")) {
+        const tag = raw.trim();
+        if (!tag) continue;
+        const key = tag.toLowerCase();
+        if (!seen.has(key)) seen.set(key, tag);
+      }
+    }
+    return [...seen.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  }, [results]);
+
   const filteredRows = useMemo(() => {
     let data = results;
     if (statusFilter !== "all") data = data.filter((r) => r.Status === statusFilter);
@@ -136,6 +153,14 @@ function ShopifyProcessorInner() {
     if (b2cFilter === "yes") data = data.filter((r) => r.B2C === "Yes");
     else if (b2cFilter === "no") data = data.filter((r) => r.B2C === "No");
     if (dupSkuFilter) data = data.filter((r) => dupSkuSet.has(r["Variant SKU"].toUpperCase()));
+    if (tagsFilter.length > 0) {
+      // OR semantics: keep rows that contain at least one of the selected tags
+      const wanted = new Set(tagsFilter.map((t) => t.toLowerCase()));
+      data = data.filter((r) => {
+        if (!r.Tags) return false;
+        return r.Tags.split(",").some((t) => wanted.has(t.trim().toLowerCase()));
+      });
+    }
     const matcher = buildSearchMatcher(search);
     if (matcher) {
       data = data.filter((r) =>
@@ -143,7 +168,7 @@ function ShopifyProcessorInner() {
       );
     }
     return data;
-  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, dupSkuFilter, dupSkuSet, search]);
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, dupSkuFilter, dupSkuSet, tagsFilter, search]);
 
   const sortedRows = useMemo(() => {
     if (!sortColumn) return filteredRows;
@@ -168,7 +193,7 @@ function ShopifyProcessorInner() {
     return Math.min(exportRowLimit, sortedRows.length);
   }, [exportRowLimit, customRowLimit, sortedRows.length]);
 
-  const isFiltered = statusFilter !== "all" || etaFilter !== "all" || discountFilter !== "all" || policyFilter !== "all" || b2cFilter !== "all" || dupSkuFilter || search !== "";
+  const isFiltered = statusFilter !== "all" || etaFilter !== "all" || discountFilter !== "all" || policyFilter !== "all" || b2cFilter !== "all" || dupSkuFilter || tagsFilter.length > 0 || search !== "";
 
   useEffect(() => {
     workerRef.current = new Worker(
@@ -231,6 +256,8 @@ function ShopifyProcessorInner() {
         const exportKey = key === "ETA" ? "ETA (product.metafields.custom.eta)" : key;
         if (key === "No") {
           obj[exportKey] = i + 1;
+        } else if (key === "B2C") {
+          obj[exportKey] = row[key] === "Yes" ? "TRUE" : "FALSE";
         } else if (PRICE_COLUMNS.has(key)) {
           obj[exportKey] = formatPrice(row[key] as number | null) || 0;
         } else if (INTEGER_OUTPUT_COLUMNS.has(key)) {
@@ -287,6 +314,7 @@ function ShopifyProcessorInner() {
         const obj: Record<string, unknown> = {};
         for (const key of visibleColumns) {
           if (key === "No") obj[key] = startRow + j;
+          else if (key === "B2C") obj[key] = row[key] === "Yes" ? "TRUE" : "FALSE";
           else if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
           else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[key] = n !== null && n !== undefined ? Math.round(n) : 0; }
           else obj[key] = row[key];
@@ -354,6 +382,7 @@ function ShopifyProcessorInner() {
         const obj: Record<string, unknown> = {};
         for (const key of visibleColumns) {
           if (key === "No") obj[key] = startRow + j;
+          else if (key === "B2C") obj[key] = row[key] === "Yes" ? "TRUE" : "FALSE";
           else if (PRICE_COLUMNS.has(key)) obj[key] = formatPrice(row[key] as number | null) || 0;
           else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[key] = n !== null && n !== undefined ? Math.round(n) : 0; }
           else obj[key] = row[key];
@@ -602,12 +631,15 @@ function ShopifyProcessorInner() {
             b2cFilter={b2cFilter}
             dupSkuFilter={dupSkuFilter}
             dupSkuCount={dupSkuSet.size}
+            tagsFilter={tagsFilter}
+            availableTags={availableTags}
             setStatusFilter={setStatusFilter}
             setEtaFilter={setEtaFilter}
             setDiscountFilter={setDiscountFilter}
             setPolicyFilter={setPolicyFilter}
             setB2cFilter={setB2cFilter}
             setDupSkuFilter={setDupSkuFilter}
+            setTagsFilter={setTagsFilter}
             activeTab={urlTab}
             onTabChange={setUrlTab}
           />
