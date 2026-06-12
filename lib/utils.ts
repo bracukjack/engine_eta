@@ -58,6 +58,16 @@ export function formatPrice(value: number | null | undefined): string {
 }
 
 /**
+ * Format a number as a Shopify-safe price for export:
+ * dot as decimal separator, no thousands separator, always 2 decimal places.
+ * 69.95 → "69.95"  |  1234.56 → "1234.56"  |  null / undefined / NaN → ""
+ */
+export function formatPriceExport(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) return "";
+  return value.toFixed(2);
+}
+
+/**
  * Format a number as a European integer (whole number, dot as thousands separator).
  * 1234 → "1.234"  |  42 → "42"  |  null / NaN → ""
  */
