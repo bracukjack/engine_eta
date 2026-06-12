@@ -49,6 +49,7 @@ export interface OutputRow {
   PlannedOutStock: number;
   "Discount %": number | null;
   "Cost per item": number | null;
+  "B2B Price": number | null;
   Reference: string | null;
   B2C: "Yes" | "No";
   Tags: string | null;
@@ -84,6 +85,7 @@ export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number
   { key: "PlannedOutStock", label: "Plan Out", flex: 1 },
   { key: "Discount %", label: "Disc %", flex: 1, },
   { key: "Cost per item", label: "Cost", flex: 1 },
+  { key: "B2B Price", label: "B2B Price", flex: 1 },
   { key: "Tags", label: "Tags", flex: 2 },
 ];
 
@@ -91,6 +93,7 @@ export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
   "Variant Price",
   "Variant Compare at Price",
   "Cost per item",
+  "B2B Price",
 ]);
 
 export const INTEGER_OUTPUT_COLUMNS: Set<keyof OutputRow> = new Set([
