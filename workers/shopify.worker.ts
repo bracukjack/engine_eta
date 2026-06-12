@@ -349,10 +349,14 @@ ctx.onmessage = (e: MessageEvent) => {
             return /^coming[\s-]soon$/i.test(tag) ? "COMING SOON" : tag;
           }).filter(Boolean)
         : [];
-      // Add "Sale" tag if there is a compare-at price (i.e. product is discounted)
+      // Add "Sale" tag only when the product actually has a discount (Discount %).
+      // Remove it when there is no discount, even if it was present in the source tags.
       const alreadyHasSaleTag = existingTags.some((t) => t.toLowerCase() === "sale");
-      if (compareAtPrice !== null && !alreadyHasSaleTag) {
-        existingTags.push("Sale");
+      if (discountPct !== null) {
+        if (!alreadyHasSaleTag) existingTags.push("Sale");
+      } else if (alreadyHasSaleTag) {
+        const saleIdx = existingTags.findIndex((t) => t.toLowerCase() === "sale");
+        if (saleIdx !== -1) existingTags.splice(saleIdx, 1);
       }
       // "Sale" and "New" are mutually exclusive — "New" is removed when "Sale" is present
       const hasSale = existingTags.some((t) => t.toLowerCase() === "sale");

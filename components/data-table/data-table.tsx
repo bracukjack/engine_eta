@@ -293,6 +293,7 @@ export function DataTable() {
   const policyFilter = useAppStore((s) => s.policyFilter);
   const b2cFilter = useAppStore((s) => s.b2cFilter);
   const dupSkuFilter = useAppStore((s) => s.dupSkuFilter);
+  const tagsFilter = useAppStore((s) => s.tagsFilter);
   const search = useAppStore((s) => s.search);
   const sortColumn = useAppStore((s) => s.sortColumn);
   const sortDirection = useAppStore((s) => s.sortDirection);
@@ -356,6 +357,14 @@ export function DataTable() {
     if (dupSkuFilter) {
       data = data.filter((r) => dupSkuSet.has(r["Variant SKU"]));
     }
+    if (tagsFilter.length > 0) {
+      // OR semantics: keep rows that contain at least one of the selected tags
+      const wanted = new Set(tagsFilter.map((t) => t.toLowerCase()));
+      data = data.filter((r) => {
+        if (!r.Tags) return false;
+        return r.Tags.split(",").some((t) => wanted.has(t.trim().toLowerCase()));
+      });
+    }
     const matcher = buildSearchMatcher(search);
     if (matcher) {
       data = data.filter((r) =>
@@ -363,7 +372,7 @@ export function DataTable() {
       );
     }
     return data;
-  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, dupSkuFilter, dupSkuSet, search]);
+  }, [results, statusFilter, etaFilter, discountFilter, policyFilter, b2cFilter, dupSkuFilter, dupSkuSet, tagsFilter, search]);
 
   // Sort data with nulls-to-bottom
   const sortedData = useMemo(() => {
