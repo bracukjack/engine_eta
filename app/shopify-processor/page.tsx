@@ -17,6 +17,14 @@ import { ExportDropdown, SizeToggle, RightPanel } from "./components/shared";
 
 const FILE_KEYS: FileKey[] = ["shopify", "sales", "stock", "purchase", "items", "published"];
 
+/** Maps OutputRow column keys to their Shopify export header names. */
+const EXPORT_KEY_MAP: Partial<Record<string, string>> = {
+  ETA: "ETA (product.metafields.custom.eta)",
+  "Variant Quantity": "Inventory Quantity",
+  B2C: "b2c (product.metafields.custom.b2c)",
+  "B2B Price": "B2B Price (product.metafields.custom.b2b_price)",
+};
+
 function chunkArray<T>(arr: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size));
@@ -253,7 +261,7 @@ function ShopifyProcessorInner() {
     return rows.map((row, i) => {
       const obj: Record<string, unknown> = {};
       for (const key of visibleColumns) {
-        const exportKey = key === "ETA" ? "ETA (product.metafields.custom.eta)" : key;
+        const exportKey = EXPORT_KEY_MAP[key] ?? key;
         if (key === "No") {
           obj[exportKey] = i + 1;
         } else if (key === "B2C") {
@@ -313,11 +321,12 @@ function ShopifyProcessorInner() {
       const chunkData = chunks[i].map((row, j) => {
         const obj: Record<string, unknown> = {};
         for (const key of visibleColumns) {
-          if (key === "No") obj[key] = startRow + j;
-          else if (key === "B2C") obj[key] = row[key] === "Yes" ? "TRUE" : "FALSE";
-          else if (PRICE_COLUMNS.has(key)) obj[key] = formatPriceExport(row[key] as number | null) || 0;
-          else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[key] = n !== null && n !== undefined ? Math.round(n) : 0; }
-          else obj[key] = row[key];
+          const exportKey = EXPORT_KEY_MAP[key] ?? key;
+          if (key === "No") obj[exportKey] = startRow + j;
+          else if (key === "B2C") obj[exportKey] = row[key] === "Yes" ? "TRUE" : "FALSE";
+          else if (PRICE_COLUMNS.has(key)) obj[exportKey] = formatPriceExport(row[key] as number | null) || 0;
+          else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[exportKey] = n !== null && n !== undefined ? Math.round(n) : 0; }
+          else obj[exportKey] = row[key];
         }
         return obj;
       });
@@ -381,11 +390,12 @@ function ShopifyProcessorInner() {
       const chunkData = chunks[i].map((row, j) => {
         const obj: Record<string, unknown> = {};
         for (const key of visibleColumns) {
-          if (key === "No") obj[key] = startRow + j;
-          else if (key === "B2C") obj[key] = row[key] === "Yes" ? "TRUE" : "FALSE";
-          else if (PRICE_COLUMNS.has(key)) obj[key] = formatPriceExport(row[key] as number | null) || 0;
-          else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[key] = n !== null && n !== undefined ? Math.round(n) : 0; }
-          else obj[key] = row[key];
+          const exportKey = EXPORT_KEY_MAP[key] ?? key;
+          if (key === "No") obj[exportKey] = startRow + j;
+          else if (key === "B2C") obj[exportKey] = row[key] === "Yes" ? "TRUE" : "FALSE";
+          else if (PRICE_COLUMNS.has(key)) obj[exportKey] = formatPriceExport(row[key] as number | null) || 0;
+          else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[exportKey] = n !== null && n !== undefined ? Math.round(n) : 0; }
+          else obj[exportKey] = row[key];
         }
         return obj;
       });
