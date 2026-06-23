@@ -18,7 +18,9 @@ import {
   Tag,
   Code2,
   Ruler,
+  ShoppingCart,
 } from "lucide-react";
+
 const TOOLS = [
   {
     name: "Shopify Processor",
@@ -93,6 +95,8 @@ export function Sidebar() {
   const collapsed = useAppStore((s) => s.sidebarCollapsed);
   const toggle = useAppStore((s) => s.toggleSidebar);
 
+  const isAmazonActive = pathname.startsWith("/amazon");
+
   return (
     <aside
       className={cn(
@@ -146,6 +150,35 @@ export function Sidebar() {
             </Link>
           );
         })}
+
+        {/* Amazon section */}
+        {collapsed ? (
+          <div className="border-t border-edge mx-1 my-2" />
+        ) : (
+          <div className="px-2.5 pt-3 pb-1">
+            <span className="text-[10px] font-semibold text-muted/50 uppercase tracking-wider">
+              Amazon
+            </span>
+          </div>
+        )}
+        <Link
+          href="/amazon"
+          className={cn(
+            "flex items-center gap-2.5 px-2.5 h-9 rounded-md text-[13px] transition-colors duration-150 group",
+            isAmazonActive
+              ? "bg-accent/10 text-accent font-medium"
+              : "text-muted hover:text-primary hover:bg-surface-hover"
+          )}
+        >
+          <ShoppingCart
+            size={16}
+            className={cn(
+              "shrink-0 transition-colors duration-150",
+              isAmazonActive ? "text-accent" : "text-muted/70 group-hover:text-primary"
+            )}
+          />
+          {!collapsed && <span className="truncate flex-1">Amazon</span>}
+        </Link>
       </nav>
 
       {/* Collapse toggle */}
