@@ -116,9 +116,10 @@ ctx.onmessage = (e: MessageEvent) => {
 
       const ref = String(row["Reference"] ?? "").trim();
       if (ref) {
-        const existing = refsMap.get(item);
+        const itemLower = item.toLowerCase();
+        const existing = refsMap.get(itemLower);
         if (!existing) {
-          refsMap.set(item, [ref]);
+          refsMap.set(itemLower, [ref]);
         } else if (!existing.includes(ref)) {
           existing.push(ref);
         }
@@ -137,9 +138,10 @@ ctx.onmessage = (e: MessageEvent) => {
       const code = String(row["ItemCode"] ?? "").trim();
       if (!code) continue;
 
-      plannedInMap.set(code,  parseNum(row["PlannedInStock"])  ?? 0);
-      plannedOutMap.set(code, parseNum(row["PlannedOutStock"]) ?? 0);
-      stockQtyMap.set(code.toLowerCase(), parseNum(row["Stock"]) ?? 0);
+      const codeLower = code.toLowerCase();
+      plannedInMap.set(codeLower,  parseNum(row["PlannedInStock"])  ?? 0);
+      plannedOutMap.set(codeLower, parseNum(row["PlannedOutStock"]) ?? 0);
+      stockQtyMap.set(codeLower, parseNum(row["Stock"]) ?? 0);
     }
 
     // ── STEP 3: Purchase Orders ────────────────────────────────────────
@@ -157,9 +159,10 @@ ctx.onmessage = (e: MessageEvent) => {
       const qty = Math.round(parseNum(row["Quantity"]) ?? 0);
       if (qty <= 0) continue;
 
-      const existing = poBatchesMap.get(item);
+      const itemLower = item.toLowerCase();
+      const existing = poBatchesMap.get(itemLower);
       if (!existing) {
-        poBatchesMap.set(item, [{ qty, date: receiptDate }]);
+        poBatchesMap.set(itemLower, [{ qty, date: receiptDate }]);
       } else {
         existing.push({ qty, date: receiptDate });
       }
@@ -255,8 +258,8 @@ ctx.onmessage = (e: MessageEvent) => {
       }
 
       const stockQty   = stockQtyMap.get(sku.toLowerCase()) ?? 0;
-      const plannedIn  = plannedInMap.get(sku)  ?? 0;
-      const plannedOut = plannedOutMap.get(sku) ?? 0;
+      const plannedIn  = plannedInMap.get(sku.toLowerCase())  ?? 0;
+      const plannedOut = plannedOutMap.get(sku.toLowerCase()) ?? 0;
       const variantQty = Math.max(0, stockQty - plannedOut);
 
       // GOAL 1 & 2 — Status + Policy
@@ -278,7 +281,7 @@ ctx.onmessage = (e: MessageEvent) => {
       // GOAL 3 — ETA
       // Simulate cumulative stock flow batch-by-batch to find when stock turns positive.
       // ETA = receipt date of the batch that brings (stock - plannedOut + Σqty) above zero.
-      const poBatches = poBatchesMap.get(sku) ?? [];
+      const poBatches = poBatchesMap.get(sku.toLowerCase()) ?? [];
       let etaFromPo: string | null = null;
       if (poBatches.length > 0) {
         let running = stockQty - plannedOut;
@@ -337,7 +340,7 @@ ctx.onmessage = (e: MessageEvent) => {
         b2bPrice = null;
       }
 
-      const refs = refsMap.get(sku);
+      const refs = refsMap.get(sku.toLowerCase());
       const reference = refs && refs.length > 0 ? refs.join("\n") : null;
 
       // ── Tags ─────────────────────────────────────────────────────────
@@ -440,11 +443,12 @@ ctx.onmessage = (e: MessageEvent) => {
       for (const row of publishedRows) {
         const sku = String(row[skuColumn] ?? "").trim();
         if (sku === "") continue;
+        const skuLower = sku.toLowerCase();
         const limitedTo = String(row["LimitedToStores"] ?? "").trim();
         if (limitedTo === "") {
-          allChannelsSkus.add(sku);
+          allChannelsSkus.add(skuLower);
         } else if (limitedTo.toLowerCase().includes("b2c")) {
-          b2cSkus.add(sku);
+          b2cSkus.add(skuLower);
         }
       }
     }
@@ -460,11 +464,10 @@ ctx.onmessage = (e: MessageEvent) => {
       const sku = String(row["Variant SKU"]).trim();
       // GIFTCARD is always active — skip B2C override
       if (sku.toUpperCase() === "GIFTCARD") continue;
-      if (b2cSkus.has(sku)) {
-        // LimitedToStores contains B2C → keep stock-based status, mark as B2C
-        row["B2C"] = "Yes";
-      } else if (allChannelsSkus.has(sku)) {
-        // LimitedToStores empty → all channels active → B2C is included
+      const skuLower = sku.toLowerCase();
+      const isB2C = b2cSkus.has(skuLower) || allChannelsSkus.has(skuLower);
+
+      if (isB2C) {
         row["B2C"] = "Yes";
       } else {
         // Not in published or limited to other stores → force draft
@@ -473,6 +476,18 @@ ctx.onmessage = (e: MessageEvent) => {
         row["Published"] = "FALSE";
         row["Variant Inventory Policy"] = "deny";
       }
+
+      // Sync "B2C" tag: add when B2C=Yes, remove when B2C=No
+      const currentTags = row["Tags"]
+        ? String(row["Tags"]).split(",").map((t) => t.trim()).filter(Boolean)
+        : [];
+      const b2cTagIdx = currentTags.findIndex((t) => t.toLowerCase() === "b2c");
+      if (isB2C && b2cTagIdx === -1) {
+        currentTags.push("B2C");
+      } else if (!isB2C && b2cTagIdx !== -1) {
+        currentTags.splice(b2cTagIdx, 1);
+      }
+      row["Tags"] = currentTags.length > 0 ? currentTags.join(", ") : null;
     }
 
     progress("Published", 98, "B2C filter applied");
@@ -495,7 +510,7 @@ ctx.onmessage = (e: MessageEvent) => {
       referenceFilled: output.filter(
         (r) => r.Reference !== null && r.Reference !== ""
       ).length,
-      b2cTotal: b2cSkus.size,
+      b2cTotal: output.filter((r) => r["B2C"] === "Yes").length,
     };
 
     output.forEach((r, i) => { r.No = i + 1; });
