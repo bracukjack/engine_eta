@@ -17,6 +17,7 @@ import {
   Activity,
   Tag,
   Code2,
+  Ruler,
 } from "lucide-react";
 const TOOLS = [
   {
@@ -71,6 +72,12 @@ const TOOLS = [
     name: "HTML Cleaner",
     href: "/html-cleaner",
     icon: Code2,
+    active: true,
+  },
+  {
+    name: "Omtrek Calculator",
+    href: "/omtrek-calculator",
+    icon: Ruler,
     active: true,
   },
   {
