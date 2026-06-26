@@ -183,7 +183,6 @@ ctx.onmessage = (e: MessageEvent) => {
       compareOut: number | null;
       discountPct: number | null;
       salesNum: number | null;
-      costNum: number | null;
     }
     const itemMap = new Map<string, ItemInfo>();
     const itemCodeCasingMap = new Map<string, string>(); // lowercase → original casing from items
@@ -196,7 +195,6 @@ ctx.onmessage = (e: MessageEvent) => {
 
       const retailNum = parseNum(row["Extra field:  Retail Price EUR"]);
       const salesNum = parseNum(row["SalesPrice"]);
-      const costNum = parseNum(row["CostPriceStandard"]);
       const discountPct = extractDiscount(row["Class_09Description"]);
 
       let priceOut: number | null;
@@ -210,7 +208,7 @@ ctx.onmessage = (e: MessageEvent) => {
         compareOut = null;
       }
 
-      itemMap.set(code.toLowerCase(), { priceOut, compareOut, discountPct, salesNum, costNum });
+      itemMap.set(code.toLowerCase(), { priceOut, compareOut, discountPct, salesNum });
     }
 
     progress("Items", 80, `Processed ${itemMap.size} items`);
@@ -248,8 +246,7 @@ ctx.onmessage = (e: MessageEvent) => {
           PlannedInStock: 0,
           PlannedOutStock: 0,
           "Discount %": null,
-          "Cost per item": itemInfo?.costNum ?? null,
-          "B2B Price": itemInfo?.salesNum ?? null,
+          "Cost per item": itemInfo?.salesNum ?? null,
           Reference: null,
           B2C: "No" as const,
           Tags: String(row["Tags"] ?? "").trim() || null,
@@ -324,20 +321,17 @@ ctx.onmessage = (e: MessageEvent) => {
       let compareAtPrice: number | null;
       let discountPct: number | null;
       let costPerItem: number | null;
-      let b2bPrice: number | null;
 
       if (itemInfo) {
         variantPrice = itemInfo.priceOut;
         compareAtPrice = itemInfo.compareOut;
         discountPct = itemInfo.discountPct;
-        costPerItem = itemInfo.costNum;
-        b2bPrice = itemInfo.salesNum;
+        costPerItem = itemInfo.salesNum;
       } else {
         variantPrice = parseNum(row["Variant Price"]);
         compareAtPrice = parseNum(row["Variant Compare At Price"]);
         discountPct = null;
         costPerItem = null;
-        b2bPrice = null;
       }
 
       const refs = refsMap.get(sku.toLowerCase());
@@ -403,7 +397,6 @@ ctx.onmessage = (e: MessageEvent) => {
         PlannedOutStock: Math.round(plannedOut),
         "Discount %": discountPct,
         "Cost per item": costPerItem,
-        "B2B Price": b2bPrice,
         Reference: reference,
         B2C: "No" as const,
         Tags: tagsOut,
