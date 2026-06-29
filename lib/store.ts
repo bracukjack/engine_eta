@@ -232,6 +232,19 @@ export const useAppStore = create<AppStore>()(
         summary: s.summary,
         visibleColumns: s.visibleColumns,
       }),
+      version: 1,
+      migrate: (persisted) => {
+        // Append any OUTPUT_COLUMNS keys missing from a previously persisted
+        // visibleColumns list (e.g. newly added Length/Width/Height/HS Code/Weight)
+        const state = persisted as { visibleColumns?: (keyof OutputRow)[] } | undefined;
+        if (state?.visibleColumns) {
+          const existing = new Set(state.visibleColumns);
+          for (const c of OUTPUT_COLUMNS) {
+            if (!existing.has(c.key)) state.visibleColumns.push(c.key);
+          }
+        }
+        return state as never;
+      },
     }
   )
 );

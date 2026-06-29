@@ -183,6 +183,11 @@ ctx.onmessage = (e: MessageEvent) => {
       compareOut: number | null;
       discountPct: number | null;
       salesNum: number | null;
+      length: number | null;
+      width: number | null;
+      height: number | null;
+      hsCode: string | null;
+      weight: number | null;
     }
     const itemMap = new Map<string, ItemInfo>();
     const itemCodeCasingMap = new Map<string, string>(); // lowercase → original casing from items
@@ -208,7 +213,20 @@ ctx.onmessage = (e: MessageEvent) => {
         compareOut = null;
       }
 
-      itemMap.set(code.toLowerCase(), { priceOut, compareOut, discountPct, salesNum });
+      const hsCodeRaw = String(row["StatisticalCode"] ?? "").trim();
+      const hsCode = hsCodeRaw !== "" ? hsCodeRaw : null;
+
+      itemMap.set(code.toLowerCase(), {
+        priceOut,
+        compareOut,
+        discountPct,
+        salesNum,
+        length: parseNum(row["Extra field: Product - L (cm)"]),
+        width: parseNum(row["Extra field:  Product - W (cm)"]),
+        height: parseNum(row["Extra field:  Product - H (cm)"]),
+        hsCode,
+        weight: parseNum(row["NetWeight"]),
+      });
     }
 
     progress("Items", 80, `Processed ${itemMap.size} items`);
@@ -250,6 +268,11 @@ ctx.onmessage = (e: MessageEvent) => {
           Reference: null,
           B2C: "No" as const,
           Tags: String(row["Tags"] ?? "").trim() || null,
+          Length: itemInfo?.length ?? null,
+          Width: itemInfo?.width ?? null,
+          Height: itemInfo?.height ?? null,
+          "HS Code": itemInfo?.hsCode ?? null,
+          "Product Weight": itemInfo?.weight ?? null,
         });
         continue;
       }
@@ -400,6 +423,11 @@ ctx.onmessage = (e: MessageEvent) => {
         Reference: reference,
         B2C: "No" as const,
         Tags: tagsOut,
+        Length: itemInfo?.length ?? null,
+        Width: itemInfo?.width ?? null,
+        Height: itemInfo?.height ?? null,
+        "HS Code": itemInfo?.hsCode ?? null,
+        "Product Weight": itemInfo?.weight ?? null,
       });
     }
 

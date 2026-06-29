@@ -9,6 +9,8 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@tanstack/react-table": "^8.21.3",
+    "@tanstack/react-virtual": "^3.14.4",
     "@types/papaparse": "^5.5.2",
     "chart.js": "^4.5.1",
     "clsx": "^2.1.1",

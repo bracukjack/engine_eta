@@ -22,6 +22,9 @@ const EXPORT_KEY_MAP: Partial<Record<string, string>> = {
   ETA: "ETA (product.metafields.custom.eta)",
   "Variant Quantity": "Inventory Quantity",
   B2C: "b2c (product.metafields.custom.b2c)",
+  Length: "Length (product.metafields.custom.size_x_value)",
+  Width: "Width (product.metafields.custom.size_z_value)",
+  Height: "Height (product.metafields.custom.size_y_value)",
 };
 
 function chunkArray<T>(arr: T[], size: number): T[][] {

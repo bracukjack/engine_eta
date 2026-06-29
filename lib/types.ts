@@ -52,6 +52,11 @@ export interface OutputRow {
   Reference: string | null;
   B2C: "Yes" | "No";
   Tags: string | null;
+  Length: number | null;
+  Width: number | null;
+  Height: number | null;
+  "HS Code": string | null;
+  "Product Weight": number | null;
 }
 
 export interface Summary {
@@ -85,6 +90,11 @@ export const OUTPUT_COLUMNS: { key: keyof OutputRow; label: string; flex: number
   { key: "Discount %", label: "Disc %", flex: 1, },
   { key: "Cost per item", label: "Cost", flex: 1 },
   { key: "Tags", label: "Tags", flex: 2 },
+  { key: "Length", label: "Length", flex: 1 },
+  { key: "Width", label: "Width", flex: 1 },
+  { key: "Height", label: "Height", flex: 1 },
+  { key: "HS Code", label: "HS Code", flex: 1.5 },
+  { key: "Product Weight", label: "Weight", flex: 1 },
 ];
 
 export const PRICE_COLUMNS: Set<keyof OutputRow> = new Set([
