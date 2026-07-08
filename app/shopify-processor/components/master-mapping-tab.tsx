@@ -18,9 +18,11 @@ import { TABLE_SIZE_CONFIG } from "@/lib/types";
 import { SizeToggle } from "./shared";
 import {
   Upload, CheckCircle2, Play, Loader2, Download, X, FileSpreadsheet,
-  ArrowUp, ArrowDown, ArrowUpDown, Image as ImageIcon,
+  Image as ImageIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { ColumnDef } from "@tanstack/react-table";
+import { VirtualDataTable, type VDTColumnMeta } from "@/components/data-table/virtual-data-table";
 
 type StatusFilter = "all" | "active" | "draft";
 type ImageFilter = "all" | "yes" | "no";
@@ -214,6 +216,30 @@ export function MasterMappingTab() {
 
   const cfg = TABLE_SIZE_CONFIG[size];
 
+  // Column model: the display columns + a trailing (non-sortable) "Images" column.
+  const columns = useMemo<ColumnDef<MappedProduct>[]>(() => {
+    const cols: ColumnDef<MappedProduct>[] = DISPLAY_COLUMNS.map((c) => ({
+      id: c.key,
+      header: c.label,
+      size: c.width,
+      meta: { cellClassName: c.numeric ? "font-mono text-right" : undefined } as VDTColumnMeta,
+      cell: ({ row }) => <CellValue colKey={c.key} value={row.original.main[c.key] ?? ""} />,
+    }));
+    cols.push({
+      id: "__images",
+      header: "Images",
+      size: 70,
+      meta: { sortable: false },
+      cell: ({ row }) => (
+        <span className={cn("inline-flex items-center gap-1", row.original.imageCount > 0 ? "text-primary" : "text-amber-600")}>
+          <ImageIcon size={11} />
+          {row.original.imageCount}
+        </span>
+      ),
+    });
+    return cols;
+  }, []);
+
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* ── Toolbar ─────────────────────────────────────────────────── */}
@@ -326,80 +352,25 @@ export function MasterMappingTab() {
 
       {/* ── Table ───────────────────────────────────────────────────── */}
       {result ? (
-        <div className="flex-1 min-h-0 overflow-auto">
-          <table className="border-collapse" style={{ minWidth: "100%" }}>
-            <thead className="sticky top-0 z-10">
-              <tr className="bg-surface border-b border-edge">
-                <th
-                  className="px-2 text-left text-[11px] text-muted font-semibold sticky left-0 bg-surface z-20"
-                  style={{ width: 44, height: 36 }}
-                >
-                  No
-                </th>
-                {DISPLAY_COLUMNS.map((c) => {
-                  const sorted = sortKey === c.key;
-                  return (
-                    <th
-                      key={c.key}
-                      onClick={() => toggleSort(c.key)}
-                      className={cn(
-                        "px-2 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none hover:text-primary transition-colors whitespace-nowrap",
-                        sorted ? "text-amber-600" : "text-muted"
-                      )}
-                      style={{ minWidth: c.width }}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        {c.label}
-                        {sorted ? (
-                          sortDir === "asc" ? <ArrowUp size={10} /> : <ArrowDown size={10} />
-                        ) : (
-                          <ArrowUpDown size={10} className="opacity-20" />
-                        )}
-                      </span>
-                    </th>
-                  );
-                })}
-                <th className="px-2 text-left text-[11px] text-muted font-semibold whitespace-nowrap" style={{ width: 70 }}>
-                  Images
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {visible.map((p, i) => (
-                <tr
-                  key={p.handle + i}
-                  className={cn(
-                    "border-b border-edge/60",
-                    p.status === "draft" ? "bg-zinc-50/60" : i % 2 === 0 ? "bg-white" : "bg-surface/30",
-                    "hover:bg-blue-50/40"
-                  )}
-                  style={{ height: cfg.rowHeight }}
-                >
-                  <td className="px-2 text-muted font-mono sticky left-0 bg-inherit" style={{ fontSize: cfg.fontSize }}>
-                    {i + 1}
-                  </td>
-                  {DISPLAY_COLUMNS.map((c) => (
-                    <td
-                      key={c.key}
-                      className={cn("px-2", c.numeric ? "font-mono text-right" : "")}
-                      style={{ fontSize: cfg.fontSize, maxWidth: c.width }}
-                    >
-                      <CellValue colKey={c.key} value={p.main[c.key] ?? ""} />
-                    </td>
-                  ))}
-                  <td className="px-2" style={{ fontSize: cfg.fontSize }}>
-                    <span className={cn("inline-flex items-center gap-1", p.imageCount > 0 ? "text-primary" : "text-amber-600")}>
-                      <ImageIcon size={11} />{p.imageCount}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {visible.length === 0 && (
-            <div className="py-12 text-center text-muted text-xs">No products match the current filters.</div>
-          )}
-        </div>
+        <VirtualDataTable<MappedProduct>
+          data={visible}
+          columns={columns}
+          rowHeight={cfg.rowHeight}
+          fontSize={cfg.fontSize}
+          cellPadding="0 8px"
+          headerPadding="0 8px"
+          rowNumber
+          sortColumnId={sortKey}
+          sortDir={sortDir}
+          onSort={toggleSort}
+          getRowClassName={(p, i) =>
+            cn(
+              p.status === "draft" ? "bg-zinc-50/60" : i % 2 === 0 ? "bg-white" : "bg-surface/30",
+              "hover:bg-blue-50/40"
+            )
+          }
+          empty="No products match the current filters."
+        />
       ) : (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center text-muted">

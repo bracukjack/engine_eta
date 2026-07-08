@@ -1,15 +1,17 @@
 "use client";
 
-import { useRef, useEffect, useState, useMemo, useCallback } from "react";
-import { FixedSizeList as List } from "react-window";
+import { useEffect, useState, useMemo, useCallback } from "react";
+import type { ColumnDef } from "@tanstack/react-table";
 import { cn } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
-import { HIGHLIGHTED_PREVIEW_COLUMNS, FILE_SLOTS_CONFIG, TABLE_SIZE_CONFIG, type FileKey, type TableSize } from "@/lib/types";
-import { Search, AlertTriangle, FileText, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
-import { showCopiedToast } from "@/components/ui/data-tooltip";
+import { HIGHLIGHTED_PREVIEW_COLUMNS, FILE_SLOTS_CONFIG, TABLE_SIZE_CONFIG, type TableSize } from "@/lib/types";
+import { Search, AlertTriangle, FileText } from "lucide-react";
+import { VirtualDataTable, type VDTColumnMeta } from "@/components/data-table/virtual-data-table";
 
 const FIRST_COL_WIDTH = 44;
 const COL_MIN_WIDTH = 130;
+
+type PreviewRow = string[];
 
 export function PreviewTable() {
   const previewData = useAppStore((s) => s.previewData);
@@ -24,10 +26,6 @@ export function PreviewTable() {
   const [sortCol, setSortCol] = useState<number | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
-  const outerRef = useRef<HTMLDivElement>(null);
-  const headerRef = useRef<HTMLDivElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [listHeight, setListHeight] = useState(400);
   const [searchInput, setSearchInput] = useState(previewSearch);
 
   const sizeConfig = TABLE_SIZE_CONFIG[size];
@@ -42,7 +40,10 @@ export function PreviewTable() {
   );
 
   const activeData = previewTab ? previewData[previewTab] : null;
-  const highlighted = previewTab ? HIGHLIGHTED_PREVIEW_COLUMNS[previewTab] : new Set<string>();
+  const highlighted = useMemo(
+    () => (previewTab ? HIGHLIGHTED_PREVIEW_COLUMNS[previewTab] : new Set<string>()),
+    [previewTab]
+  );
 
   // Reset sort when tab changes
   useEffect(() => { setSortCol(null); setSortDir("asc"); }, [previewTab]);
@@ -98,31 +99,34 @@ export function PreviewTable() {
     });
   }, []);
 
-  // Measure list height
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const ro = new ResizeObserver((e) => setListHeight(Math.max(100, e[0]?.contentRect.height ?? 400)));
-    ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, []);
+  const headers = useMemo(() => activeData?.headers ?? [], [activeData]);
+  const colCount = headers.length;
 
-  // Sync header horizontal scroll
-  const syncScroll = useCallback(() => {
-    if (headerRef.current && outerRef.current)
-      headerRef.current.scrollLeft = outerRef.current.scrollLeft;
-  }, []);
-  useEffect(() => {
-    const el = outerRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", syncScroll);
-    return () => el.removeEventListener("scroll", syncScroll);
-  }, [syncScroll, activeData]);
+  // One column per CSV header; data rows are plain string[] indexed by column.
+  const columns = useMemo<ColumnDef<PreviewRow>[]>(
+    () =>
+      headers.map((h, ci) => {
+        const isHl = highlighted.has(h);
+        const meta: VDTColumnMeta = {
+          headerClassName: isHl ? "bg-amber-50/60 text-amber-800 hover:bg-amber-50" : "bg-slate-100",
+          cellClassName: cn("font-mono", isHl ? "text-primary" : "text-primary/55"),
+        };
+        return {
+          id: String(ci),
+          header: h,
+          size: COL_MIN_WIDTH,
+          accessorFn: (row) => row[ci] ?? "",
+          cell: ({ getValue }) => {
+            const v = getValue<string>();
+            return v === "" ? <span className="text-muted/30">—</span> : v;
+          },
+          meta,
+        };
+      }),
+    [headers, highlighted]
+  );
 
   if (tabs.length === 0) return null;
-
-  const headers = activeData?.headers ?? [];
-  const colCount = headers.length;
-  const totalWidth = FIRST_COL_WIDTH + colCount * COL_MIN_WIDTH;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -212,108 +216,25 @@ export function PreviewTable() {
             <span>{activeData.encoding}</span>
           </div>
 
-          {/* ── Header ───────────────────────────────────────── */}
-          <div className="shrink-0 border-b border-edge bg-surface overflow-hidden">
-            <div ref={headerRef} className="overflow-hidden">
-              <div className="flex" style={{ width: totalWidth, minWidth: "100%", height: 36 }}>
-                {/* Row # */}
-                <div
-                  className="shrink-0 sticky left-0 z-20 bg-slate-100 border-r border-edge flex items-center justify-center text-[10px] font-bold text-muted"
-                  style={{ width: FIRST_COL_WIDTH }}
-                >#</div>
-                {headers.map((h, ci) => {
-                  const isHl = highlighted.has(h);
-                  const isSorted = sortCol === ci;
-                  return (
-                    <button
-                      key={ci}
-                      onClick={() => handleSort(ci)}
-                      className={cn(
-                        "shrink-0 flex items-center gap-1 px-2 text-[11px] font-semibold uppercase tracking-wider border-r border-edge cursor-pointer transition-colors truncate",
-                        isSorted
-                          ? "bg-amber-50 text-amber-700 border-b-2 border-b-amber-400"
-                          : isHl
-                          ? "bg-amber-50/60 text-amber-800 hover:bg-amber-50"
-                          : "bg-slate-100 text-muted hover:text-primary"
-                      )}
-                      style={{ width: COL_MIN_WIDTH }}
-                      title={h}
-                    >
-                      <span className="truncate flex-1 text-left">{h}</span>
-                      {isSorted ? (
-                        sortDir === "asc" ? <ArrowUp size={10} className="text-amber-600 shrink-0" /> : <ArrowDown size={10} className="text-amber-600 shrink-0" />
-                      ) : (
-                        <ArrowUpDown size={10} className="opacity-20 shrink-0" />
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Body (virtualized) ──────────────────────────── */}
-          <div
-            ref={containerRef}
-            className="flex-1 min-h-0"
-            onDoubleClick={(e) => {
-              const el = (e.target as HTMLElement).closest("[data-tip]");
-              if (!el) return;
-              const text = (el.getAttribute("data-tip") ?? "").trim();
-              if (!text) return;
-              navigator.clipboard.writeText(text);
-              showCopiedToast(e.clientX, e.clientY);
-            }}
-          >
-            {displayRows.length > 0 ? (
-              <List
-                outerRef={outerRef}
-                height={listHeight}
-                width="100%"
-                itemCount={displayRows.length}
-                itemSize={sizeConfig.rowHeight}
-                style={{ overflowX: "auto", overflowY: "auto" }}
-              >
-                {({ index, style }) => {
-                  const row = displayRows[index];
-                  const isEven = index % 2 === 0;
-                  return (
-                    <div
-                      style={{ ...style, width: totalWidth, minWidth: "100%" }}
-                      className={cn("flex items-center border-b border-edge/50 hover:bg-surface-hover", isEven ? "bg-white" : "bg-slate-50/60")}
-                    >
-                      <div
-                        className="shrink-0 sticky left-0 z-10 bg-inherit border-r border-edge flex items-center justify-center font-mono text-muted"
-                        style={{ width: FIRST_COL_WIDTH, fontSize: sizeConfig.fontSize, padding: sizeConfig.cellPadding }}
-                      >
-                        {index + 1}
-                      </div>
-                      {row.map((cell, ci) => {
-                        const isHl = highlighted.has(headers[ci] ?? "");
-                        return (
-                          <div
-                            key={ci}
-                            className={cn(
-                              "shrink-0 font-mono border-r border-edge truncate",
-                              isHl ? "text-primary" : "text-primary/55"
-                            )}
-                            style={{ width: COL_MIN_WIDTH, fontSize: sizeConfig.fontSize, padding: sizeConfig.cellPadding }}
-                            data-tip={cell || undefined}
-                          >
-                            {cell === "" ? <span className="text-muted/30">—</span> : cell}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  );
-                }}
-              </List>
-            ) : (
-              <div className="flex items-center justify-center h-full text-xs text-muted">
-                {previewSearch ? "No rows match your search" : "No data"}
-              </div>
-            )}
-          </div>
+          {/* ── Table (virtualized, sticky header) ──────────── */}
+          <VirtualDataTable<PreviewRow>
+            data={displayRows}
+            columns={columns}
+            rowHeight={sizeConfig.rowHeight}
+            fontSize={sizeConfig.fontSize}
+            cellPadding={sizeConfig.cellPadding}
+            headerPadding="0 8px"
+            bordered
+            rowNumber
+            rowNumberWidth={FIRST_COL_WIDTH}
+            enableCopy
+            getCellTip={(row, id) => row[Number(id)] || undefined}
+            sortColumnId={sortCol === null ? null : String(sortCol)}
+            sortDir={sortDir}
+            onSort={(id) => handleSort(Number(id))}
+            getRowClassName={(_, index) => (index % 2 === 0 ? "bg-white" : "bg-slate-50/60")}
+            empty={previewSearch ? "No rows match your search" : "No data"}
+          />
         </>
       )}
     </div>

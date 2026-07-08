@@ -8,10 +8,11 @@ import { buildSearchMatcher, cn } from "@/lib/utils";
 import { StatChip } from "@/components/status-badge/status-badge";
 import { Button } from "@/components/ui/button";
 import {
-  Search, X, ArrowUp, ArrowDown, ArrowUpDown,
-  Download, ChevronLeft, ChevronRight, Play,
+  Search, X, Download, ChevronLeft, ChevronRight,
   Columns3, Check, AlertCircle, Loader2, CheckCircle2,
 } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { VirtualDataTable } from "@/components/data-table/virtual-data-table";
 
 // ── Parse & Compare Logic ────────────────────────────────────────────────────
 
@@ -390,7 +391,34 @@ export default function PublishMDMTab() {
     [publishVisibleColumns]
   );
 
-  const totalFlex = useMemo(() => activeCols.reduce((s, c) => s + c.flex, 0), [activeCols]);
+  const columns = useMemo<ColumnDef<PublishRow>[]>(
+    () =>
+      activeCols.map((col) => {
+        const base: ColumnDef<PublishRow> = {
+          id: String(col.key),
+          header: col.label,
+          size: Math.max(70, Math.round(col.flex * 110)),
+        };
+        if (col.key === "publish_status")
+          return { ...base, cell: ({ row }) => <PublishStatusBadge status={row.original.publish_status} /> };
+        if (col.key === "publishedPlatform")
+          return {
+            ...base,
+            cell: ({ row }) => {
+              const v = row.original.publishedPlatform;
+              return (
+                <span className={cn("text-[11px] font-mono", v === true ? "text-emerald-600" : v === false ? "text-red-500" : "text-muted")}>
+                  {v === null ? "—" : String(v)}
+                </span>
+              );
+            },
+          };
+        if (col.key === "reference" || col.key === "ean")
+          return { ...base, cell: ({ row }) => <span className="font-mono text-[11px]">{String(row.original[col.key] ?? "")}</span> };
+        return { ...base, cell: ({ row }) => String(row.original[col.key] ?? "") };
+      }),
+    [activeCols]
+  );
 
   const pageNumbers = useMemo(() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -536,90 +564,19 @@ export default function PublishMDMTab() {
       )}
 
       {/* Table */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 800 }}>
-          <colgroup>
-            {activeCols.map((col) => (
-              <col
-                key={String(col.key)}
-                style={{ width: `${((col.flex / totalFlex) * 100).toFixed(2)}%` }}
-              />
-            ))}
-          </colgroup>
-          <thead className="sticky top-0 z-10 bg-surface">
-            <tr className="border-b border-edge">
-              {activeCols.map((col) => {
-                const isSorted = publishSortColumn === col.key;
-                return (
-                  <th
-                    key={String(col.key)}
-                    onClick={() => togglePublishSort(col.key)}
-                    className={cn(
-                      "text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group",
-                      isSorted ? "text-amber-600" : "text-muted hover:text-primary"
-                    )}
-                  >
-                    <div className="flex items-center gap-1">
-                      {col.label}
-                      {isSorted ? (
-                        publishSortDirection === "asc"
-                          ? <ArrowUp size={10} className="text-amber-600 shrink-0" />
-                          : <ArrowDown size={10} className="text-amber-600 shrink-0" />
-                      ) : (
-                        <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-30 shrink-0" />
-                      )}
-                    </div>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {pagedRows.length === 0 ? (
-              <tr>
-                <td colSpan={activeCols.length} className="text-center py-16 text-muted text-sm">
-                  No rows match the current filters.
-                </td>
-              </tr>
-            ) : (
-              pagedRows.map((row) => (
-                <tr
-                  key={row._id}
-                  className={cn(
-                    "border-b border-edge/50 transition-colors hover:bg-surface-hover",
-                    row.publish_status === "unpublished" && "bg-red-50/40"
-                  )}
-                >
-                  {activeCols.map((col) => {
-                    const value = row[col.key];
-                    return (
-                      <td
-                        key={String(col.key)}
-                        className="px-3 py-2 text-[12px] truncate overflow-hidden"
-                      >
-                        {col.key === "publish_status" ? (
-                          <PublishStatusBadge status={value as PublishStatus} />
-                        ) : col.key === "publishedPlatform" ? (
-                          <span className={cn(
-                            "text-[11px] font-mono",
-                            value === true ? "text-emerald-600" : value === false ? "text-red-500" : "text-muted"
-                          )}>
-                            {value === null ? "—" : String(value)}
-                          </span>
-                        ) : col.key === "reference" || col.key === "ean" ? (
-                          <span className="font-mono text-[11px]">{String(value ?? "")}</span>
-                        ) : (
-                          <span>{String(value ?? "")}</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <VirtualDataTable<PublishRow>
+        data={pagedRows}
+        columns={columns}
+        rowHeight={36}
+        fontSize="12px"
+        cellPadding="8px 12px"
+        headerPadding="0 12px"
+        sortColumnId={publishSortColumn ? String(publishSortColumn) : null}
+        sortDir={publishSortDirection}
+        onSort={(id) => togglePublishSort(id as keyof PublishRow)}
+        getRowClassName={(row) => cn(row.publish_status === "unpublished" && "bg-red-50/40")}
+        empty="No rows match the current filters."
+      />
 
       {/* Pagination bar */}
       <div className="shrink-0 border-t border-edge bg-surface px-4 h-10 flex items-center gap-3">

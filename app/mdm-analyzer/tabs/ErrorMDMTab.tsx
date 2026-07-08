@@ -6,10 +6,11 @@ import type { ErrorRow, Country } from "@/lib/mdm-store";
 import { buildSearchMatcher, cn, exportToExcel, exportToCsv } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
-  Search, X, ArrowUp, ArrowDown, ArrowUpDown,
-  Download, ChevronLeft, ChevronRight,
+  Search, X, Download, ChevronLeft, ChevronRight,
   Columns3, Check, AlertCircle, Loader2, Filter, ChevronDown,
 } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { VirtualDataTable } from "@/components/data-table/virtual-data-table";
 
 // ── Country config ─────────────────────────────────────────────────────────────
 
@@ -380,7 +381,41 @@ export default function ErrorMDMTab() {
     () => ERROR_COLUMNS.filter((c) => errorVisibleColumns.includes(String(c.key))),
     [errorVisibleColumns]
   );
-  const totalFlex = useMemo(() => activeCols.reduce((s, c) => s + c.flex, 0), [activeCols]);
+  const columns = useMemo<ColumnDef<ErrorRow>[]>(
+    () =>
+      activeCols.map((col) => {
+        const base: ColumnDef<ErrorRow> = {
+          id: String(col.key),
+          header: col.label,
+          size: Math.max(70, Math.round(col.flex * 110)),
+        };
+        if (col.key === "derived_country")
+          return { ...base, cell: ({ row }) => <CountryBadge country={row.original.derived_country} /> };
+        if (col.key === "attributeCodes")
+          return { ...base, cell: ({ row }) => <span className="font-mono text-[11px] text-muted">{String(row.original.attributeCodes ?? "")}</span> };
+        if (col.key === "lineNumber")
+          return { ...base, cell: ({ row }) => <span className="font-mono text-[11px] text-muted/70">{String(row.original.lineNumber ?? "")}</span> };
+        if (col.key === "reference")
+          return { ...base, cell: ({ row }) => <span className="font-mono text-[11px]">{String(row.original.reference ?? "")}</span> };
+        if (col.key === "errorCode")
+          return {
+            ...base,
+            cell: ({ row }) => (
+              <span className="font-mono text-[11px] bg-red-50 text-red-700 px-1.5 py-0.5 rounded">{String(row.original.errorCode ?? "")}</span>
+            ),
+          };
+        return { ...base, cell: ({ row }) => String(row.original[col.key] ?? "") };
+      }),
+    [activeCols]
+  );
+
+  const getCellTip = useCallback(
+    (row: ErrorRow, id: string): string | undefined => {
+      const v = row[id as keyof ErrorRow];
+      return v != null && v !== "" ? String(v) : undefined;
+    },
+    []
+  );
 
   const pageNumbers = useMemo(() => {
     if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
@@ -583,91 +618,20 @@ export default function ErrorMDMTab() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 900 }}>
-          <colgroup>
-            {activeCols.map((col) => (
-              <col
-                key={String(col.key)}
-                style={{ width: `${((col.flex / totalFlex) * 100).toFixed(2)}%` }}
-              />
-            ))}
-          </colgroup>
-          <thead className="sticky top-0 z-10 bg-surface">
-            <tr className="border-b border-edge">
-              {activeCols.map((col) => {
-                const isSorted = errorSortColumn === col.key;
-                return (
-                  <th
-                    key={String(col.key)}
-                    onClick={() => toggleErrorSort(col.key)}
-                    className={cn(
-                      "text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group",
-                      isSorted ? "text-amber-600" : "text-muted hover:text-primary"
-                    )}
-                  >
-                    <div className="flex items-center gap-1">
-                      {col.label}
-                      {isSorted ? (
-                        errorSortDirection === "asc"
-                          ? <ArrowUp size={10} className="text-amber-600 shrink-0" />
-                          : <ArrowDown size={10} className="text-amber-600 shrink-0" />
-                      ) : (
-                        <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-30 shrink-0" />
-                      )}
-                    </div>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
-            {pagedRows.length === 0 ? (
-              <tr>
-                <td colSpan={activeCols.length} className="text-center py-16 text-muted text-sm">
-                  {isFiltered ? "No rows match the current filters." : "No error data."}
-                </td>
-              </tr>
-            ) : (
-              pagedRows.map((row) => (
-                <tr
-                  key={row._id}
-                  className="border-b border-edge/50 transition-colors hover:bg-surface-hover"
-                >
-                  {activeCols.map((col) => {
-                    const value = row[col.key];
-                    return (
-                      <td
-                        key={String(col.key)}
-                        className={cn(
-                          "px-3 py-2 text-[12px] overflow-hidden",
-                          col.key === "errorMessage" ? "whitespace-normal" : "truncate"
-                        )}
-                      >
-                        {col.key === "derived_country" ? (
-                          <CountryBadge country={value as Country} />
-                        ) : col.key === "attributeCodes" ? (
-                          <span className="font-mono text-[11px] text-muted">{String(value ?? "")}</span>
-                        ) : col.key === "lineNumber" ? (
-                          <span className="font-mono text-[11px] text-muted/70">{String(value ?? "")}</span>
-                        ) : col.key === "reference" ? (
-                          <span className="font-mono text-[11px]">{String(value ?? "")}</span>
-                        ) : col.key === "errorCode" ? (
-                          <span className="font-mono text-[11px] bg-red-50 text-red-700 px-1.5 py-0.5 rounded">
-                            {String(value ?? "")}
-                          </span>
-                        ) : (
-                          <span>{String(value ?? "")}</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <VirtualDataTable<ErrorRow>
+        data={pagedRows}
+        columns={columns}
+        rowHeight={36}
+        fontSize="12px"
+        cellPadding="8px 12px"
+        headerPadding="0 12px"
+        enableCopy
+        getCellTip={getCellTip}
+        sortColumnId={errorSortColumn ? String(errorSortColumn) : null}
+        sortDir={errorSortDirection}
+        onSort={(id) => toggleErrorSort(id as keyof ErrorRow)}
+        empty={isFiltered ? "No rows match the current filters." : "No error data."}
+      />
 
       {/* Pagination bar */}
       <div className="shrink-0 border-t border-edge bg-surface px-4 h-10 flex items-center gap-3">

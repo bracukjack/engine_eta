@@ -6,18 +6,21 @@ import { buildSearchMatcher, formatInteger, cn, exportToExcel, exportToCsv } fro
 import { StatChip } from "@/components/status-badge/status-badge";
 import { Button } from "@/components/ui/button";
 import { STOCK_COLUMNS, STOCK_TABLE_SIZE } from "@/lib/stock-types";
-import type { StockTableSize, StockStatusFilter } from "@/lib/stock-types";
+import type { StockTableSize, StockStatusFilter, StockRow } from "@/lib/stock-types";
+import type { ColumnDef } from "@tanstack/react-table";
+import { VirtualDataTable, type VDTColumnMeta } from "@/components/data-table/virtual-data-table";
 import {
-  Search, X, ArrowUp, ArrowDown, ArrowUpDown,
-  Download, ChevronLeft, ChevronRight,
+  Search, X, Download, ChevronLeft, ChevronRight,
 } from "lucide-react";
 
 import {
   RealStockBadge,
   StockColumnToggle,
   CategoryFilter,
-  showCopiedToast,
 } from "../components/shared";
+
+// STOCK_TABLE_SIZE has no row height; derive one per size for virtualization.
+const STOCK_ROW_HEIGHT: Record<StockTableSize, number> = { S: 28, M: 32, L: 38 };
 
 export default function RealStockTab() {
   const rows              = useStockStore((s) => s.rows);
@@ -123,11 +126,6 @@ export default function RealStockTab() {
     [visibleColumns]
   );
 
-  const totalFlex = useMemo(
-    () => activeCols.reduce((s, c) => s + c.flex, 0),
-    [activeCols]
-  );
-
   const totalPages = useMemo(
     () => (rowsPerPage === "all" ? 1 : Math.ceil(sortedRows.length / (rowsPerPage as number))),
     [sortedRows, rowsPerPage]
@@ -160,6 +158,40 @@ export default function RealStockTab() {
     if (safeCurrentPage >= totalPages - 3) return Array.from({ length: 7 }, (_, i) => totalPages - 6 + i);
     return Array.from({ length: 7 }, (_, i) => safeCurrentPage - 3 + i);
   }, [totalPages, safeCurrentPage]);
+
+  const pageOffset = rowsPerPage === "all" ? 0 : (safeCurrentPage - 1) * (rowsPerPage as number);
+
+  // Column model for the visible columns.
+  const columns = useMemo<ColumnDef<StockRow>[]>(
+    () =>
+      activeCols.map((col) => {
+        const meta: VDTColumnMeta = { headerTitle: col.tooltip };
+        const base: ColumnDef<StockRow> = {
+          id: col.key,
+          accessorKey: col.key,
+          header: col.label,
+          size: Math.max(60, Math.round(col.flex * 110)),
+          meta,
+        };
+        if (col.key === "No")
+          return { ...base, meta: { ...meta, cellClassName: "font-mono text-muted/60" }, cell: ({ row }) => pageOffset + row.index + 1 };
+        if (col.key === "RealStock")
+          return { ...base, cell: ({ row }) => <RealStockBadge value={row.original.RealStock} /> };
+        if (col.numeric)
+          return { ...base, meta: { ...meta, cellClassName: "font-mono" }, cell: ({ row }) => formatInteger(row.original[col.key] as number) };
+        return { ...base, cell: ({ row }) => String(row.original[col.key] ?? "") };
+      }),
+    [activeCols, pageOffset]
+  );
+
+  const getCellTip = useCallback((row: StockRow, id: string): string | undefined => {
+    if (id === "No") return undefined;
+    const col = STOCK_COLUMNS.find((c) => c.key === id);
+    const value = row[id as keyof StockRow];
+    if (id === "RealStock") return String(row.RealStock);
+    if (col?.numeric) return formatInteger(value as number);
+    return value != null ? String(value) : undefined;
+  }, []);
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -309,109 +341,21 @@ export default function RealStockTab() {
       </div>
 
       {/* Table */}
-      <div className="flex-1 min-h-0 overflow-auto">
-        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 700 }}>
-          <colgroup>
-            {activeCols.map((col) => (
-              <col
-                key={col.key}
-                style={{ width: `${((col.flex / totalFlex) * 100).toFixed(2)}%` }}
-              />
-            ))}
-          </colgroup>
-
-          <thead className="sticky top-0 z-10 bg-surface">
-            <tr className="border-b border-edge">
-              {activeCols.map((col) => {
-                const isSorted = sortColumn === col.key;
-                return (
-                  <th
-                    key={col.key}
-                    onClick={() => toggleSort(col.key)}
-                    title={col.tooltip}
-                    className={cn(
-                      "text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group",
-                      isSorted ? "text-amber-600" : "text-muted hover:text-primary"
-                    )}
-                  >
-                    <div className="flex items-center gap-1">
-                      {col.label}
-                      {isSorted ? (
-                        sortDirection === "asc"
-                          ? <ArrowUp size={10} className="text-amber-600 shrink-0" />
-                          : <ArrowDown size={10} className="text-amber-600 shrink-0" />
-                      ) : (
-                        <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-30 shrink-0" />
-                      )}
-                    </div>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-
-          <tbody
-            onDoubleClick={(e) => {
-              const td = (e.target as HTMLElement).closest("td");
-              if (!td) return;
-              const text = (td.textContent ?? "").trim();
-              if (!text) return;
-              navigator.clipboard.writeText(text);
-              showCopiedToast(e.clientX, e.clientY);
-            }}
-          >
-            {pagedRows.length === 0 ? (
-              <tr>
-                <td colSpan={activeCols.length} className="text-center py-16 text-muted text-sm">
-                  {isFiltered ? "No rows match the current filters." : "No data."}
-                </td>
-              </tr>
-            ) : (
-              pagedRows.map((row, pageIdx) => {
-                const displayNo =
-                  rowsPerPage === "all"
-                    ? pageIdx + 1
-                    : (safeCurrentPage - 1) * (rowsPerPage as number) + pageIdx + 1;
-                return (
-                  <tr
-                    key={row.No}
-                    className={cn(
-                      "border-b border-edge/50 transition-colors hover:bg-surface-hover",
-                      row.RealStock < 0 && "bg-red-50/40"
-                    )}
-                  >
-                    {activeCols.map((col) => {
-                      const value = row[col.key];
-                      return (
-                        <td
-                          key={col.key}
-                          className="truncate overflow-hidden"
-                          style={{ padding: sizeConfig.cellPadding, fontSize: sizeConfig.fontSize }}
-                          data-tip={
-                            !col.numeric && col.key !== "No" && col.key !== "RealStock" && value != null
-                              ? String(value)
-                              : undefined
-                          }
-                        >
-                          {col.key === "No" ? (
-                            <span className="font-mono text-muted/60">{displayNo}</span>
-                          ) : col.key === "RealStock" ? (
-                            <RealStockBadge value={row.RealStock} />
-                          ) : col.numeric ? (
-                            <span className="font-mono">{formatInteger(value as number)}</span>
-                          ) : (
-                            <span>{String(value ?? "")}</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+      <VirtualDataTable<StockRow>
+        data={pagedRows}
+        columns={columns}
+        rowHeight={STOCK_ROW_HEIGHT[tableSize]}
+        fontSize={sizeConfig.fontSize}
+        cellPadding={sizeConfig.cellPadding}
+        headerPadding="0 12px"
+        enableCopy
+        getCellTip={getCellTip}
+        sortColumnId={sortColumn}
+        sortDir={sortDirection}
+        onSort={(id) => toggleSort(id as keyof StockRow)}
+        getRowClassName={(row) => cn(row.RealStock < 0 && "bg-red-50/40")}
+        empty={isFiltered ? "No rows match the current filters." : "No data."}
+      />
 
       {/* Pagination bar */}
       <div className="shrink-0 border-t border-edge bg-surface px-4 h-10 flex items-center gap-3">

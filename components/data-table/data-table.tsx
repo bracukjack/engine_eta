@@ -2,19 +2,12 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
-import {
-  useReactTable,
-  getCoreRowModel,
-  flexRender,
-  type ColumnDef,
-} from "@tanstack/react-table";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import type { ColumnDef } from "@tanstack/react-table";
 import { cn, formatPrice, buildSearchMatcher } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
 import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS, TABLE_SIZE_CONFIG, type OutputRow } from "@/lib/types";
 import { StatusBadge, PolicyBadge } from "@/components/status-badge/status-badge";
-import { ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
-import { showCopiedToast } from "@/components/ui/data-tooltip";
+import { VirtualDataTable } from "@/components/data-table/virtual-data-table";
 
 // ── Editable columns ──────────────────────────────────────────────────────────
 const EDITABLE_COLUMNS = new Set<keyof OutputRow>([
@@ -307,8 +300,6 @@ export function DataTable() {
   const visibleColumns = useAppStore((s) => s.visibleColumns);
   const tableSize = useAppStore((s) => s.tableSize);
 
-  const scrollRef = useRef<HTMLDivElement>(null);
-
   const sizeConfig = TABLE_SIZE_CONFIG[tableSize];
   // Horizontal padding shared between header & body cells so columns line up precisely
   const hPad = sizeConfig.cellPadding.split(" ")[1] ?? "8px";
@@ -403,26 +394,6 @@ export function DataTable() {
     [visibleColumns, sizeConfig.fontSize]
   );
 
-  const table = useReactTable({
-    data: sortedData,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
-  const { rows } = table.getRowModel();
-
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => sizeConfig.rowHeight,
-    overscan: 10,
-  });
-
-  // Re-measure when row height (table size) changes
-  useEffect(() => {
-    rowVirtualizer.measure();
-  }, [sizeConfig.rowHeight, rowVirtualizer]);
-
   if (results.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted text-sm">
@@ -436,102 +407,32 @@ export function DataTable() {
     );
   }
 
-  const virtualRows = rowVirtualizer.getVirtualItems();
-  const totalWidth = table.getTotalSize();
-
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Single scroll container: sticky header + virtualized body share one scroll,
-          so columns always line up and the header follows horizontal scrolling. */}
-      <div
-        ref={scrollRef}
-        className="flex-1 min-h-0 overflow-auto"
-        onDoubleClick={(e) => {
-          const el = (e.target as HTMLElement).closest("[data-tip]");
-          if (!el) return;
-          const text = (el.getAttribute("data-tip") ?? "").trim();
-          if (!text) return;
-          navigator.clipboard.writeText(text);
-          showCopiedToast(e.clientX, e.clientY);
+      <VirtualDataTable<OutputRow>
+        data={sortedData}
+        columns={columns}
+        rowHeight={sizeConfig.rowHeight}
+        fontSize={sizeConfig.fontSize}
+        cellPadding={sizeConfig.cellPadding}
+        headerPadding={`0 ${hPad}`}
+        enableCopy
+        getCellTip={(r, id) => {
+          const key = id as keyof OutputRow;
+          if (EDITABLE_COLUMNS.has(key) || key === "Reference") return undefined;
+          const val = r[key];
+          return val != null ? String(val) : undefined;
         }}
-      >
-        <table className="grid" style={{ width: totalWidth }}>
-          <thead className="grid sticky top-0 z-10 bg-surface border-b border-edge">
-            {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id} className="flex w-full">
-                {hg.headers.map((header) => {
-                  const key = header.column.id as keyof OutputRow;
-                  const isSorted = sortColumn === key;
-                  return (
-                    <th
-                      key={header.id}
-                      onClick={() => toggleSort(key)}
-                      className={cn(
-                        "flex items-center gap-1 h-9 text-[11px] font-semibold uppercase tracking-wider hover:text-primary transition-colors cursor-pointer select-none",
-                        isSorted ? "text-amber-600" : "text-muted"
-                      )}
-                      style={{ width: header.getSize(), padding: `0 ${hPad}` }}
-                      title={String(header.column.columnDef.header)}
-                    >
-                      <span className="truncate">
-                        {flexRender(header.column.columnDef.header, header.getContext())}
-                      </span>
-                      {isSorted ? (
-                        sortDirection === "asc" ? (
-                          <ArrowUp size={10} className="text-amber-600 shrink-0" />
-                        ) : (
-                          <ArrowDown size={10} className="text-amber-600 shrink-0" />
-                        )
-                      ) : (
-                        <ArrowUpDown size={10} className="opacity-20 shrink-0" />
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            ))}
-          </thead>
-          <tbody className="grid relative" style={{ height: rowVirtualizer.getTotalSize() }}>
-            {virtualRows.map((vRow) => {
-              const row = rows[vRow.index];
-              const r = row.original;
-              const policy = r["Variant Inventory Policy"];
-              return (
-                <tr
-                  key={row.id}
-                  className={cn(
-                    "flex absolute w-full items-center border-b border-edge/50 transition-colors hover:bg-surface-hover",
-                    policy === "continue" && "bg-amber-50",
-                    r.Status === "draft" && "bg-zinc-50"
-                  )}
-                  style={{ height: sizeConfig.rowHeight, transform: `translateY(${vRow.start}px)` }}
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const key = cell.column.id as keyof OutputRow;
-                    const isEditable = EDITABLE_COLUMNS.has(key);
-                    const isRef = key === "Reference";
-                    const val = r[key];
-                    return (
-                      <td
-                        key={cell.id}
-                        className="truncate shrink-0 text-left"
-                        style={{
-                          width: cell.column.getSize(),
-                          padding: sizeConfig.cellPadding,
-                          fontSize: sizeConfig.fontSize,
-                        }}
-                        data-tip={!isEditable && !isRef && val != null ? String(val) : undefined}
-                      >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+        sortColumnId={sortColumn}
+        sortDir={sortDirection}
+        onSort={(id) => toggleSort(id as keyof OutputRow)}
+        getRowClassName={(r) =>
+          cn(
+            r["Variant Inventory Policy"] === "continue" && "bg-amber-50",
+            r.Status === "draft" && "bg-zinc-50"
+          )
+        }
+      />
 
       {/* Row count */}
       <div className="shrink-0 h-7 flex items-center px-3 border-t border-edge bg-surface">

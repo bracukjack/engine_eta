@@ -7,10 +7,12 @@ import { processStockUpdateData } from "@/lib/stock-update-logic";
 import type { StockUpdateOutputRow } from "@/lib/stock-update-logic";
 import { Button } from "@/components/ui/button";
 import {
-  Activity, X, Loader2, AlertCircle, Search, Download, ArrowUp, ArrowDown, ArrowUpDown, ChevronLeft, ChevronRight, Play, Copy, Columns3, Check
+  Activity, X, Loader2, AlertCircle, Search, Download, ChevronLeft, ChevronRight, Play, Copy, Columns3, Check
 } from "lucide-react";
 import { StockFileSlot } from "@/app/stock-analyzer/components/shared";
 import { showCopiedToast } from "@/components/ui/data-tooltip";
+import type { ColumnDef as TSColumnDef } from "@tanstack/react-table";
+import { VirtualDataTable, type VDTColumnMeta } from "@/components/data-table/virtual-data-table";
 
 type ColumnDef = {
   key: string;
@@ -203,7 +205,41 @@ export default function StockUpdateAnalyzerPage() {
   }, [sortedRows]);
 
   const activeCols = useMemo(() => COLUMNS.filter(c => store.visibleColumns.includes(c.key)), [store.visibleColumns]);
-  const totalFlex = activeCols.reduce((s, c) => s + c.flex, 0);
+
+  const columns = useMemo<TSColumnDef<StockUpdateOutputRow>[]>(
+    () =>
+      activeCols.map((col) => {
+        const alignCls = col.numeric ? "text-center font-mono" : col.center ? "text-center" : "text-left";
+        const meta: VDTColumnMeta = { headerTitle: col.label, cellClassName: alignCls, headerClassName: "group" };
+        return {
+          id: col.key,
+          size: Math.max(70, Math.round(col.flex * 110)),
+          meta,
+          header: () => (
+            <span className="inline-flex items-center gap-1">
+              {col.label}
+              <button
+                onClick={(e) => handleCopyColumn(col.key, e)}
+                title={`Copy entire ${col.label} column`}
+                className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted hover:text-accent hover:bg-accent/10 transition-colors"
+              >
+                <Copy size={11} />
+              </button>
+            </span>
+          ),
+          cell: ({ row }) => String(row.original[col.key as keyof StockUpdateOutputRow] ?? ""),
+        };
+      }),
+    [activeCols, handleCopyColumn]
+  );
+
+  const getCellTip = useCallback(
+    (row: StockUpdateOutputRow, id: string): string | undefined => {
+      const v = row[id as keyof StockUpdateOutputRow];
+      return v != null && v !== "" ? String(v) : undefined;
+    },
+    []
+  );
 
   return (
     <div className="flex-1 flex flex-col min-h-0 bg-base">
@@ -320,80 +356,20 @@ export default function StockUpdateAnalyzerPage() {
                 </Button>
               </div>
 
-              <div className="flex-1 min-h-0 overflow-auto">
-                <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: 800 }}>
-                  <colgroup>
-                    {activeCols.map(col => <col key={col.key} style={{ width: `${((col.flex / totalFlex) * 100).toFixed(2)}%` }} />)}
-                  </colgroup>
-                  <thead className="sticky top-0 z-10 bg-surface">
-                    <tr className="border-b border-edge">
-                      {activeCols.map(col => {
-                        const isSorted = store.sortColumn === col.key;
-                        return (
-                          <th
-                            key={col.key}
-                            className={cn(
-                              "px-3 py-2 text-[11px] font-semibold uppercase tracking-wider select-none whitespace-nowrap group",
-                              col.numeric || col.center ? "text-center" : "text-left",
-                              isSorted ? "text-amber-600" : "text-muted"
-                            )}
-                          >
-                            <div className={cn("flex items-center gap-1", col.numeric || col.center ? "justify-center" : "justify-start")}>
-                              <div onClick={() => store.toggleSort(col.key as keyof StockUpdateOutputRow)} className="flex items-center gap-1 cursor-pointer hover:text-primary">
-                                {col.label}
-                                {isSorted ? (
-                                  store.sortDirection === "asc" ? <ArrowUp size={10} className="text-amber-600 shrink-0" /> : <ArrowDown size={10} className="text-amber-600 shrink-0" />
-                                ) : (
-                                  <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-30 shrink-0" />
-                                )}
-                              </div>
-                              <button onClick={(e) => handleCopyColumn(col.key, e)} title={`Copy entire ${col.label} column`} className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-muted hover:text-accent hover:bg-accent/10 transition-colors ml-1">
-                                <Copy size={11} />
-                              </button>
-                            </div>
-                          </th>
-                        );
-                      })}
-                    </tr>
-                  </thead>
-                  <tbody
-                    onDoubleClick={(e) => {
-                      const td = (e.target as HTMLElement).closest("td");
-                      if (!td) return;
-                      const text = (td.textContent ?? "").trim();
-                      if (!text) return;
-                      navigator.clipboard.writeText(text);
-                      showCopiedToast(e.clientX, e.clientY);
-                    }}
-                  >
-                    {pagedRows.length === 0 ? (
-                      <tr>
-                        <td colSpan={activeCols.length} className="text-center py-16 text-muted text-sm">No match for "{store.search}".</td>
-                      </tr>
-                    ) : (
-                      pagedRows.map((row) => (
-                        <tr key={row.SKU} className="border-b border-edge/50 transition-colors hover:bg-surface-hover">
-                          {activeCols.map(col => {
-                            const val = row[col.key as keyof typeof row];
-                            return (
-                              <td
-                                key={col.key}
-                                className={cn(
-                                  "truncate px-3 py-2 text-[12px]",
-                                  col.numeric ? "text-center font-mono" : col.center ? "text-center" : "text-left"
-                                )}
-                                title={String(val)}
-                              >
-                                {val}
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
+              <VirtualDataTable<StockUpdateOutputRow>
+                data={pagedRows}
+                columns={columns}
+                rowHeight={34}
+                fontSize="12px"
+                cellPadding="8px 12px"
+                headerPadding="0 12px"
+                enableCopy
+                getCellTip={getCellTip}
+                sortColumnId={store.sortColumn}
+                sortDir={store.sortDirection}
+                onSort={(id) => store.toggleSort(id as keyof StockUpdateOutputRow)}
+                empty={`No match for "${store.search}".`}
+              />
 
               {/* Pagination */}
               <div className="shrink-0 border-t border-edge bg-surface px-4 h-10 flex items-center gap-3">

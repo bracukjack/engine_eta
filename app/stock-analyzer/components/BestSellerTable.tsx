@@ -2,13 +2,13 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { cn, buildSearchMatcher, exportToExcel, exportToCsv } from "@/lib/utils";
-import { formatCurrency, formatQty } from "@/lib/bestSeller";
-import { showCopiedToast } from "./shared";
+import { formatQty } from "@/lib/bestSeller";
 import { getChannelColorClass } from "./BestSellerFilters";
 import type { BestSellerItem, StockStatusLabel } from "@/lib/stock-types";
+import type { ColumnDef } from "@tanstack/react-table";
+import { VirtualDataTable } from "@/components/data-table/virtual-data-table";
 import {
-  Search, X, ArrowUp, ArrowDown, ArrowUpDown,
-  Download, ChevronLeft, ChevronRight, Filter, Check, Columns3
+  Search, X, Download, ChevronLeft, ChevronRight, Check, Columns3
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -166,8 +166,6 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
     return Array.from({ length: 7 }, (_, i) => safePage - 3 + i);
   }, [totalPages, safePage]);
 
-  const totalFlex = activeCols.reduce((s, c) => s + c.flex, 0);
-
   // Build exportable rows from visible columns
   const getExportData = useCallback(() => {
     const COLS: { key: string; label: string }[] = [
@@ -202,6 +200,87 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
     const { headers, rows } = getExportData();
     await exportToExcel(headers, rows, `best_sellers_${new Date().toISOString().slice(0, 10)}`, "Best Sellers");
   }, [getExportData]);
+
+  // Column model for the (only the visible) columns.
+  const columns = useMemo<ColumnDef<BestSellerItem>[]>(
+    () =>
+      activeCols.map((c) => {
+        const base: ColumnDef<BestSellerItem> = {
+          id: c.key,
+          accessorKey: c.key,
+          header: c.label,
+          size: Math.max(60, Math.round(c.flex * 110)),
+        };
+        switch (c.key) {
+          case "rank":
+            return { ...base, meta: { cellClassName: "font-mono text-muted/60" }, cell: ({ row }) => row.original.rank };
+          case "itemCode":
+            return { ...base, meta: { cellClassName: "font-mono" }, cell: ({ row }) => row.original.itemCode };
+          case "category":
+            return { ...base, cell: ({ row }) => row.original.category || "—" };
+          case "totalQty":
+            return { ...base, meta: { cellClassName: "font-mono" }, cell: ({ row }) => formatQty(row.original.totalQty) };
+          case "totalRevenue":
+            return { ...base, meta: { cellClassName: "font-mono" }, cell: ({ row }) => formatCurrencyInt(row.original.totalRevenue) };
+          case "grossProfit":
+            return { ...base, meta: { cellClassName: "font-mono" }, cell: ({ row }) => formatCurrencyInt(row.original.grossProfit) };
+          case "orderCount":
+            return { ...base, meta: { cellClassName: "font-mono" }, cell: ({ row }) => row.original.orderCount };
+          case "currentStock":
+            return {
+              ...base,
+              meta: { cellClassName: "font-mono" },
+              cell: ({ row }) => (row.original.currentStock !== null ? formatQty(row.original.currentStock) : "N/A"),
+            };
+          case "stockStatus":
+            return { ...base, cell: ({ row }) => <StockStatusBadge status={row.original.stockStatus} /> };
+          case "channels":
+            return {
+              ...base,
+              cell: ({ row }) =>
+                row.original.channels.length === 0 ? (
+                  <span className="text-[11px] text-muted">—</span>
+                ) : (
+                  <div className="flex gap-0.5 overflow-hidden">
+                    {row.original.channels.map((ch) => (
+                      <span
+                        key={ch}
+                        className={cn(
+                          "inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none shrink-0",
+                          getChannelColorClass(ch)
+                        )}
+                      >
+                        {ch}
+                      </span>
+                    ))}
+                  </div>
+                ),
+            };
+          default:
+            // productName and any text columns
+            return base;
+        }
+      }),
+    [activeCols]
+  );
+
+  // Text to copy / show on hover, per cell.
+  const getCellTip = useCallback((row: BestSellerItem, id: string): string | undefined => {
+    switch (id) {
+      case "rank": return String(row.rank);
+      case "itemCode": return row.itemCode;
+      case "productName": return row.productName;
+      case "category": return row.category || undefined;
+      case "totalQty": return formatQty(row.totalQty);
+      case "totalRevenue": return formatCurrencyInt(row.totalRevenue);
+      case "grossProfit": return formatCurrencyInt(row.grossProfit);
+      case "orderCount": return String(row.orderCount);
+      case "currentStock": return row.currentStock !== null ? formatQty(row.currentStock) : "N/A";
+      case "stockStatus": return row.stockStatus;
+      case "channels": return row.channels.join(", ") || undefined;
+      default: return undefined;
+    }
+  }, []);
 
   return (
     <div className="mx-4 my-3 bg-white border border-edge rounded-lg shadow-sm overflow-hidden flex flex-col min-h-0 relative z-0">
@@ -300,103 +379,28 @@ export default function BestSellerTable({ items }: BestSellerTableProps) {
       </div>
 
       {/* Table */}
-      <div className="overflow-x-auto max-h-[500px] flex-1 min-h-0 relative z-10">
-        <table className="w-full border-collapse" style={{ tableLayout: "fixed", minWidth: `${activeCols.length * 80}px` }}>
-          <colgroup>
-            {activeCols.map((col) => (
-              <col key={col.key} style={{ width: `${((col.flex / totalFlex) * 100).toFixed(2)}%` }} />
-            ))}
-          </colgroup>
-          <thead className="sticky top-0 z-10 bg-surface shadow-sm">
-            <tr className="border-b border-edge">
-              {activeCols.map((col) => {
-                const isSorted = sortCol === col.key;
-                return (
-                  <th
-                    key={col.key}
-                    onClick={() => toggleSort(col.key)}
-                    className={cn(
-                      "text-left px-3 py-2 text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group bg-surface",
-                      isSorted ? "text-amber-600" : "text-muted hover:text-primary"
-                    )}
-                  >
-                    <div className="flex items-center gap-1">
-                      {col.label}
-                      {isSorted ? (
-                        sortDir === "asc"
-                          ? <ArrowUp size={10} className="text-amber-600 shrink-0" />
-                          : <ArrowDown size={10} className="text-amber-600 shrink-0" />
-                      ) : (
-                        <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-30 shrink-0" />
-                      )}
-                    </div>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody
-            onDoubleClick={(e) => {
-              const td = (e.target as HTMLElement).closest("td");
-              if (!td) return;
-              const text = (td.textContent ?? "").trim();
-              if (!text) return;
-              navigator.clipboard.writeText(text);
-              showCopiedToast(e.clientX, e.clientY);
-            }}
-          >
-            {pagedRows.length === 0 ? (
-              <tr>
-                <td colSpan={activeCols.length} className="text-center py-12 text-muted text-sm">
-                  No rows match the current filters.
-                </td>
-              </tr>
-            ) : (
-              pagedRows.map((row) => (
-                <tr
-                  key={row.itemCode}
-                  className={cn(
-                    "border-b border-edge/50 transition-colors hover:bg-surface-hover",
-                    row.stockStatus === "Sold Out" && "bg-red-50/40",
-                    row.stockStatus === "Low Stock" && "bg-amber-50/30"
-                  )}
-                >
-                  {visibleCols.includes("rank") && <td className="px-3 py-1.5 text-[12px] font-mono text-muted/60">{row.rank}</td>}
-                  {visibleCols.includes("itemCode") && <td className="px-3 py-1.5 text-[12px] font-mono truncate" data-tip={row.itemCode}>{row.itemCode}</td>}
-                  {visibleCols.includes("productName") && <td className="px-3 py-1.5 text-[12px] truncate" data-tip={row.productName}>{row.productName}</td>}
-                  {visibleCols.includes("category") && <td className="px-3 py-1.5 text-[12px] truncate" data-tip={row.category || undefined}>{row.category || "—"}</td>}
-                  {visibleCols.includes("totalQty") && <td className="px-3 py-1.5 text-[12px] font-mono">{formatQty(row.totalQty)}</td>}
-                  {visibleCols.includes("totalRevenue") && <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrencyInt(row.totalRevenue)}</td>}
-                  {visibleCols.includes("grossProfit") && <td className="px-3 py-1.5 text-[12px] font-mono">{formatCurrencyInt(row.grossProfit)}</td>}
-                  {visibleCols.includes("orderCount") && <td className="px-3 py-1.5 text-[12px] font-mono">{row.orderCount}</td>}
-                  {visibleCols.includes("currentStock") && (
-                    <td className="px-3 py-1.5 text-[12px] font-mono">
-                      {row.currentStock !== null ? formatQty(row.currentStock) : "N/A"}
-                    </td>
-                  )}
-                  {visibleCols.includes("stockStatus") && (
-                    <td className="px-3 py-1.5">
-                      <StockStatusBadge status={row.stockStatus} />
-                    </td>
-                  )}
-                  {visibleCols.includes("channels") && (
-                    <td className="px-3 py-1.5">
-                      <div className="flex flex-wrap gap-0.5">
-                        {row.channels.map((ch) => (
-                          <span key={ch} className={cn("inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium leading-none", getChannelColorClass(ch))}>
-                            {ch}
-                          </span>
-                        ))}
-                        {row.channels.length === 0 && <span className="text-[11px] text-muted">—</span>}
-                      </div>
-                    </td>
-                  )}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <VirtualDataTable<BestSellerItem>
+        className="relative z-10"
+        maxHeight={500}
+        data={pagedRows}
+        columns={columns}
+        rowHeight={32}
+        fontSize="12px"
+        cellPadding="6px 12px"
+        headerPadding="0 12px"
+        enableCopy
+        getCellTip={getCellTip}
+        sortColumnId={sortCol}
+        sortDir={sortDir}
+        onSort={(id) => toggleSort(id as SortKey)}
+        getRowClassName={(row) =>
+          cn(
+            row.stockStatus === "Sold Out" && "bg-red-50/40",
+            row.stockStatus === "Low Stock" && "bg-amber-50/30"
+          )
+        }
+        empty="No rows match the current filters."
+      />
 
       {/* Pagination bar */}
       <div className="border-t border-edge bg-surface px-4 h-10 flex items-center gap-3 shrink-0 relative z-20">

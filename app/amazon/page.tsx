@@ -14,11 +14,10 @@ import {
   FileSearch,
   AlertCircle,
   AlertTriangle,
-  ChevronsUpDown,
-  ChevronUp,
-  ChevronDown,
   ExternalLink,
 } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { VirtualDataTable, type VDTColumnMeta } from "@/components/data-table/virtual-data-table";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -186,21 +185,37 @@ function MissingOffersTab() {
     else { setSortCol(col); setSortDir("asc"); }
   };
 
-  function SortIcon({ col }: { col: MOSortCol }) {
-    if (sortCol !== col) return <ChevronsUpDown size={10} className="text-muted/40 ml-1 inline" />;
-    return sortDir === "asc"
-      ? <ChevronUp size={10} className="text-accent ml-1 inline" />
-      : <ChevronDown size={10} className="text-accent ml-1 inline" />;
-  }
-
-  const COLS: { key: MOSortCol; label: string; align?: "right" }[] = [
-    { key: "date", label: "Date Added" },
-    { key: "productName", label: "Product Name" },
-    { key: "asin", label: "ASIN" },
-    { key: "sku", label: "SKU" },
-    { key: "gtin", label: "GTIN" },
-    { key: "qty", label: "Qty (FBM)", align: "right" },
-  ];
+  const columns = useMemo<ColumnDef<MissingOfferItem>[]>(() => [
+    { id: "date", header: "Date Added", size: 130, meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta, cell: ({ row }) => row.original.date || "—" },
+    { id: "productName", header: "Product Name", size: 260, meta: { cellClassName: "text-primary" } as VDTColumnMeta, cell: ({ row }) => row.original.productName || "—" },
+    { id: "asin", header: "ASIN", size: 140, meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta, cell: ({ row }) => row.original.asin || "—" },
+    { id: "sku", header: "SKU", size: 150, meta: { cellClassName: "font-mono text-primary" } as VDTColumnMeta, cell: ({ row }) => row.original.sku || "—" },
+    { id: "gtin", header: "GTIN", size: 140, meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta, cell: ({ row }) => row.original.gtin || "—" },
+    {
+      id: "qty", header: "Qty (FBM)", size: 100, meta: { cellClassName: "font-mono font-semibold text-right" } as VDTColumnMeta,
+      cell: ({ row }) => {
+        const q = row.original.qty;
+        return <span className={cn(q === 0 ? "text-red-600" : q < 5 ? "text-amber-600" : "text-primary")}>{q}</span>;
+      },
+    },
+    {
+      id: "__action", header: "Action", size: 110, meta: { sortable: false } as VDTColumnMeta,
+      cell: ({ row }) => {
+        const asin = row.original.asin;
+        return (
+          <a
+            href={asin ? `https://sellercentral.amazon.com/inventory?searchField=ASIN&searchValue=${asin}` : "https://sellercentral.amazon.com/inventory"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline font-semibold"
+          >
+            Add Offer
+            <ExternalLink size={9} />
+          </a>
+        );
+      },
+    },
+  ], []);
 
   return (
     <div className="p-4 space-y-4">
@@ -312,94 +327,21 @@ function MissingOffersTab() {
           </div>
 
           <div className="bg-surface border border-edge rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse">
-                <thead>
-                  <tr className="bg-panel border-b border-edge">
-                    <th className="px-3 py-2 text-left font-semibold text-muted font-mono w-8">#</th>
-                    {COLS.map((c) => (
-                      <th
-                        key={c.key}
-                        onClick={() => handleSort(c.key)}
-                        className={cn(
-                          "px-3 py-2 font-semibold text-muted font-mono cursor-pointer hover:text-primary select-none whitespace-nowrap",
-                          c.align === "right" ? "text-right" : "text-left"
-                        )}
-                      >
-                        {c.label}
-                        <SortIcon col={c.key} />
-                      </th>
-                    ))}
-                    <th className="px-3 py-2 text-left font-semibold text-muted font-mono whitespace-nowrap">
-                      Action
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.slice(0, 500).map((item, i) => (
-                    <tr
-                      key={i}
-                      className={cn(
-                        "border-b border-edge/50 hover:bg-surface-hover transition-colors",
-                        item.qty === 0 ? "bg-red-50/30" : item.qty < 5 ? "bg-amber-50/20" : ""
-                      )}
-                    >
-                      <td className="px-3 py-1.5 text-muted font-mono">{i + 1}</td>
-                      <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">
-                        {item.date || "—"}
-                      </td>
-                      <td className="px-3 py-1.5 text-primary max-w-[240px]">
-                        <span className="block truncate">{item.productName || "—"}</span>
-                      </td>
-                      <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">
-                        {item.asin || "—"}
-                      </td>
-                      <td className="px-3 py-1.5 font-mono text-primary whitespace-nowrap">
-                        {item.sku || "—"}
-                      </td>
-                      <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">
-                        {item.gtin || "—"}
-                      </td>
-                      <td
-                        className={cn(
-                          "px-3 py-1.5 font-mono font-semibold text-right whitespace-nowrap",
-                          item.qty === 0
-                            ? "text-red-600"
-                            : item.qty < 5
-                              ? "text-amber-600"
-                              : "text-primary"
-                        )}
-                      >
-                        {item.qty}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <a
-                          href={
-                            item.asin
-                              ? `https://sellercentral.amazon.com/inventory?searchField=ASIN&searchValue=${item.asin}`
-                              : "https://sellercentral.amazon.com/inventory"
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[10px] text-accent hover:underline font-semibold"
-                        >
-                          Add Offer
-                          <ExternalLink size={9} />
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {filtered.length > 500 && (
-              <div className="px-4 py-2 border-t border-edge bg-panel text-[11px] text-muted font-mono">
-                Showing 500 of {filtered.length.toLocaleString("en-US")} rows
-              </div>
-            )}
-            {filtered.length === 0 && (
-              <div className="text-center py-8 text-sm text-muted">No items match your filters</div>
-            )}
+            <VirtualDataTable<MissingOfferItem>
+              maxHeight={560}
+              data={filtered}
+              columns={columns}
+              rowHeight={32}
+              fontSize="11px"
+              cellPadding="6px 12px"
+              headerPadding="0 12px"
+              rowNumber
+              sortColumnId={sortCol}
+              sortDir={sortDir}
+              onSort={(id) => handleSort(id as MOSortCol)}
+              getRowClassName={(item) => cn(item.qty === 0 ? "bg-red-50/30" : item.qty < 5 ? "bg-amber-50/20" : "")}
+              empty="No items match your filters"
+            />
           </div>
         </>
       )}
@@ -538,7 +480,6 @@ function LogMatcherTab() {
       const cmp = getItemVal(a, sortCol).localeCompare(getItemVal(b, sortCol));
       return sortDir === "asc" ? cmp : -cmp;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [results, viewFilter, sortCol, sortDir]);
 
   const handleSort = (col: LMSortCol) => {
@@ -582,21 +523,22 @@ function LogMatcherTab() {
     exportToCsv(headers, rows, `LogMatched_${date}`);
   }, [filtered]);
 
-  function SortIcon({ col }: { col: LMSortCol }) {
-    if (sortCol !== col) return <ChevronsUpDown size={10} className="text-muted/40 ml-1 inline" />;
-    return sortDir === "asc"
-      ? <ChevronUp size={10} className="text-accent ml-1 inline" />
-      : <ChevronDown size={10} className="text-accent ml-1 inline" />;
-  }
-
-  const COLS: { key: LMSortCol; label: string }[] = [
-    { key: "sku", label: "SKU / Code" },
-    { key: "description", label: "Description" },
-    { key: "purchasePrice", label: "Purchase Price" },
-    { key: "salesPrice", label: "Sales Price" },
-    { key: "status", label: "Status" },
-    { key: "countryOfOrigin", label: "Country of Origin" },
-  ];
+  const columns = useMemo<ColumnDef<MatchResult>[]>(() => [
+    { id: "sku", header: "SKU / Code", size: 150, meta: { cellClassName: "font-mono text-primary" } as VDTColumnMeta, cell: ({ row }) => row.original.sku },
+    { id: "description", header: "Description", size: 220, meta: { cellClassName: "text-primary" } as VDTColumnMeta, cell: ({ row }) => row.original.item?.description || "—" },
+    { id: "purchasePrice", header: "Purchase Price", size: 130, meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta, cell: ({ row }) => row.original.item?.purchasePrice || "—" },
+    { id: "salesPrice", header: "Sales Price", size: 130, meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta, cell: ({ row }) => row.original.item?.salesPrice || "—" },
+    { id: "status", header: "Status", size: 120, meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta, cell: ({ row }) => row.original.item?.status || "—" },
+    { id: "countryOfOrigin", header: "Country of Origin", size: 150, meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta, cell: ({ row }) => row.original.item?.countryOfOrigin || "—" },
+    {
+      id: "__matchstatus", header: "Status", size: 110, meta: { sortable: false } as VDTColumnMeta,
+      cell: ({ row }) => (
+        <span className={cn("inline-block px-2 py-0.5 rounded text-[10px] font-semibold", row.original.matched ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600")}>
+          {row.original.matched ? "Matched" : "Not Found"}
+        </span>
+      ),
+    },
+  ], []);
 
   const canRun = logRows.length > 0 && skuList.length > 0;
 
@@ -759,75 +701,21 @@ function LogMatcherTab() {
           </div>
 
           <div className="bg-surface border border-edge rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-[11px] border-collapse">
-                <thead>
-                  <tr className="bg-panel border-b border-edge">
-                    <th className="px-3 py-2 text-left font-semibold text-muted font-mono w-8">#</th>
-                    {COLS.map((c) => (
-                      <th
-                        key={c.key}
-                        onClick={() => handleSort(c.key)}
-                        className="px-3 py-2 text-left font-semibold text-muted font-mono cursor-pointer hover:text-primary select-none whitespace-nowrap"
-                      >
-                        {c.label}
-                        <SortIcon col={c.key} />
-                      </th>
-                    ))}
-                    <th className="px-3 py-2 text-left font-semibold text-muted font-mono whitespace-nowrap">
-                      Status
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.slice(0, 2000).map((r, i) => (
-                    <tr
-                      key={i}
-                      className={cn(
-                        "border-b border-edge/50 hover:bg-surface-hover transition-colors",
-                        !r.matched && "bg-red-50/30"
-                      )}
-                    >
-                      <td className="px-3 py-1.5 text-muted font-mono">{i + 1}</td>
-                      <td className="px-3 py-1.5 font-mono text-primary whitespace-nowrap">{r.sku}</td>
-                      <td className="px-3 py-1.5 text-primary max-w-[200px]">
-                        <span className="block truncate">{r.item?.description || "—"}</span>
-                      </td>
-                      <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">
-                        {r.item?.purchasePrice || "—"}
-                      </td>
-                      <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">
-                        {r.item?.salesPrice || "—"}
-                      </td>
-                      <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">
-                        {r.item?.status || "—"}
-                      </td>
-                      <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">
-                        {r.item?.countryOfOrigin || "—"}
-                      </td>
-                      <td className="px-3 py-1.5">
-                        <span
-                          className={cn(
-                            "inline-block px-2 py-0.5 rounded text-[10px] font-semibold",
-                            r.matched ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
-                          )}
-                        >
-                          {r.matched ? "Matched" : "Not Found"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            {filtered.length > 2000 && (
-              <div className="px-4 py-2 border-t border-edge bg-panel text-[11px] text-muted font-mono">
-                Showing 2,000 of {filtered.length.toLocaleString("en-US")} rows
-              </div>
-            )}
-            {filtered.length === 0 && (
-              <div className="text-center py-8 text-sm text-muted">No results</div>
-            )}
+            <VirtualDataTable<MatchResult>
+              maxHeight={560}
+              data={filtered}
+              columns={columns}
+              rowHeight={32}
+              fontSize="11px"
+              cellPadding="6px 12px"
+              headerPadding="0 12px"
+              rowNumber
+              sortColumnId={sortCol}
+              sortDir={sortDir}
+              onSort={(id) => handleSort(id as LMSortCol)}
+              getRowClassName={(r) => cn(!r.matched && "bg-red-50/30")}
+              empty="No results"
+            />
           </div>
         </>
       )}

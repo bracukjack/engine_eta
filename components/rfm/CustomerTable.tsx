@@ -9,13 +9,11 @@
  */
 
 import { useMemo, useState, useRef, useEffect } from "react";
-import {
-  ArrowUp, ArrowDown, ArrowUpDown,
-  Download, ChevronLeft, ChevronRight,
-} from "lucide-react";
+import { Download } from "lucide-react";
 import { cn, formatInteger, buildSearchMatcher } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { showCopiedToast } from "@/components/ui/data-tooltip";
+import type { ColumnDef } from "@tanstack/react-table";
+import { VirtualDataTable, type VDTColumnMeta } from "@/components/data-table/virtual-data-table";
 import type { CustomerRFM, SegmentLabel } from "@/lib/rfm-types";
 import { SEGMENT_META } from "@/lib/rfm-types";
 import { SEGMENT_TOOLTIPS } from "./RFMUploader";
@@ -45,8 +43,6 @@ const COLUMNS: { key: keyof CustomerRFM; label: string; numeric?: boolean; toolt
   { key: "rfmScore",     label: "Score",          tooltip: "Mean of normalised R, F, M (0–1)", numeric: true },
   { key: "segmentLabel", label: "Segment",        tooltip: "Assigned RFM segment" },
 ];
-
-const ROWS_PER_PAGE_OPTIONS: (number | "all")[] = [50, 100, 200, 500, 1000, "all"];
 
 // ── Export helper ─────────────────────────────────────────────────────────────
 async function exportVisible(rows: CustomerRFM[], filename = "rfm_export.csv") {
@@ -83,8 +79,6 @@ export function CustomerTable({
   const [search,      setSearch]      = useState("");
   const [sortCol,     setSortCol]     = useState<keyof CustomerRFM>("rfmScore");
   const [sortDir,     setSortDir]     = useState<"asc" | "desc">("desc");
-  const [page,        setPage]        = useState(1);
-  const [rpp,         setRpp]         = useState<number | "all">(50);
   const exportBtnRef                  = useRef<HTMLButtonElement>(null);
   const [exportOpen,  setExportOpen]  = useState(false);
 
@@ -101,7 +95,6 @@ export function CustomerTable({
   const toggleSort = (col: keyof CustomerRFM) => {
     if (col === sortCol) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
     else { setSortCol(col); setSortDir("asc"); }
-    setPage(1);
   };
 
   // Unique segments for filter tabs
@@ -129,22 +122,53 @@ export function CustomerTable({
     });
   }, [filtered, sortCol, sortDir]);
 
-  // Pagination
-  const totalPages = rpp === "all" ? 1 : Math.max(1, Math.ceil(sorted.length / (rpp as number)));
-  const safePage   = Math.min(page, totalPages);
-  const paged      = rpp === "all"
-    ? sorted
-    : sorted.slice((safePage - 1) * (rpp as number), safePage * (rpp as number));
+  // Column model
+  const columns = useMemo<ColumnDef<CustomerRFM>[]>(() => {
+    const sizes: Record<string, number> = {
+      code: 120, name: 220, recency: 100, frequency: 110, monetary: 120, rfmScore: 90, segmentLabel: 150,
+    };
+    return COLUMNS.map((c) => {
+      const meta: VDTColumnMeta = { headerTitle: c.tooltip };
+      const base: ColumnDef<CustomerRFM> = {
+        id: c.key,
+        accessorKey: c.key,
+        header: c.label,
+        size: sizes[c.key] ?? 120,
+        meta,
+      };
+      switch (c.key) {
+        case "code":
+          return { ...base, meta: { ...meta, cellClassName: "font-mono text-muted" }, cell: ({ row }) => row.original.code };
+        case "name":
+          return { ...base, meta: { ...meta, cellClassName: "text-primary" }, cell: ({ row }) => row.original.name };
+        case "recency":
+          return { ...base, meta: { ...meta, cellClassName: "font-mono" }, cell: ({ row }) => `${row.original.recency}d` };
+        case "frequency":
+          return { ...base, meta: { ...meta, cellClassName: "font-mono" }, cell: ({ row }) => row.original.frequency };
+        case "monetary":
+          return { ...base, meta: { ...meta, cellClassName: "font-mono" }, cell: ({ row }) => `€${formatInteger(row.original.monetary)}` };
+        case "rfmScore":
+          return { ...base, meta: { ...meta, cellClassName: "font-mono" }, cell: ({ row }) => row.original.rfmScore.toFixed(3) };
+        case "segmentLabel":
+          return { ...base, cell: ({ row }) => <SegmentBadge label={row.original.segmentLabel} color={row.original.segmentColor} /> };
+        default:
+          return base;
+      }
+    });
+  }, []);
 
-  const pageNums = useMemo(() => {
-    if (totalPages <= 7) return Array.from({ length: totalPages }, (_, i) => i + 1);
-    if (safePage <= 4)   return [1, 2, 3, 4, 5, 6, 7];
-    if (safePage >= totalPages - 3) return Array.from({ length: 7 }, (_, i) => totalPages - 6 + i);
-    return Array.from({ length: 7 }, (_, i) => safePage - 3 + i);
-  }, [totalPages, safePage]);
-
-  const rowStart = rpp === "all" ? 1 : (safePage - 1) * (rpp as number) + 1;
-  const rowEnd   = rpp === "all" ? sorted.length : Math.min(safePage * (rpp as number), sorted.length);
+  const getCellTip = (row: CustomerRFM, id: string): string | undefined => {
+    switch (id) {
+      case "code": return row.code;
+      case "name": return row.name;
+      case "recency": return `${row.recency}d`;
+      case "frequency": return String(row.frequency);
+      case "monetary": return `€${formatInteger(row.monetary)}`;
+      case "rfmScore": return row.rfmScore.toFixed(3);
+      case "segmentLabel": return row.segmentLabel;
+      default: return undefined;
+    }
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -153,7 +177,7 @@ export function CustomerTable({
       {onSegmentChange && (
         <div className="flex items-center gap-1 flex-wrap">
           <button
-            onClick={() => { onSegmentChange("all"); setPage(1); }}
+            onClick={() => onSegmentChange("all")}
             className={cn(
               "h-7 px-2.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer border",
               activeSegment === "all"
@@ -170,7 +194,7 @@ export function CustomerTable({
             return (
               <button
                 key={seg}
-                onClick={() => { onSegmentChange(isActive ? "all" : seg); setPage(1); }}
+                onClick={() => onSegmentChange(isActive ? "all" : seg)}
                 className="h-7 px-2.5 rounded-md text-[11px] font-medium transition-colors cursor-pointer"
                 style={
                   isActive
@@ -189,7 +213,7 @@ export function CustomerTable({
       <div className="flex items-center gap-2 flex-wrap">
         <input
           value={search}
-          onChange={(e) => { setSearch(e.target.value); setPage(1); }}
+          onChange={(e) => setSearch(e.target.value)}
           placeholder="Search by code or name…"
           className="h-8 pl-3 pr-3 text-[12px] border border-edge rounded-md bg-white focus:outline-none focus:border-accent/50 w-52"
         />
@@ -247,138 +271,27 @@ export function CustomerTable({
       </div>
 
       {/* Table */}
-      <div className="overflow-auto border border-edge rounded-lg">
-        <table className="w-full border-collapse" style={{ minWidth: 700 }}>
-          <thead className="sticky top-0 z-10 bg-surface border-b border-edge">
-            <tr>
-              <th className="px-3 py-2 text-left text-[11px] font-semibold text-muted w-8">#</th>
-              {COLUMNS.map((col) => {
-                const isSorted = sortCol === col.key;
-                return (
-                  <th
-                    key={col.key}
-                    onClick={() => toggleSort(col.key)}
-                    title={col.tooltip}
-                    className={cn(
-                      "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap group",
-                      isSorted ? "text-amber-600" : "text-muted hover:text-primary"
-                    )}
-                  >
-                    <div className="flex items-center gap-1">
-                      {col.label}
-                      {isSorted ? (
-                        sortDir === "asc"
-                          ? <ArrowUp   size={10} className="text-amber-600 shrink-0" />
-                          : <ArrowDown size={10} className="text-amber-600 shrink-0" />
-                      ) : (
-                        <ArrowUpDown size={10} className="opacity-0 group-hover:opacity-30 shrink-0" />
-                      )}
-                    </div>
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-
-          <tbody
-            onDoubleClick={(e) => {
-              const td = (e.target as HTMLElement).closest("td");
-              if (!td) return;
-              const text = (td.textContent ?? "").trim();
-              if (!text) return;
-              navigator.clipboard.writeText(text);
-              showCopiedToast(e.clientX, e.clientY);
-            }}
-          >
-            {paged.length === 0 ? (
-              <tr>
-                <td colSpan={COLUMNS.length + 1} className="text-center py-12 text-muted text-sm">
-                  No customers match the current filter.
-                </td>
-              </tr>
-            ) : (
-              paged.map((row, idx) => (
-                <tr
-                  key={row.code}
-                  className="border-b border-edge/50 hover:bg-surface-hover transition-colors"
-                >
-                  <td className="px-3 py-2 text-[11px] text-muted/50 font-mono">
-                    {rowStart + idx}
-                  </td>
-                  <td className="px-3 py-2 text-[11px] font-mono text-muted truncate" data-tip={row.code}>{row.code}</td>
-                  <td className="px-3 py-2 text-[12px] text-primary max-w-[200px] truncate" data-tip={row.name}>
-                    {row.name}
-                  </td>
-                  <td className="px-3 py-2 text-[11px] font-mono">{row.recency}d</td>
-                  <td className="px-3 py-2 text-[11px] font-mono">{row.frequency}</td>
-                  <td className="px-3 py-2 text-[11px] font-mono">€{formatInteger(row.monetary)}</td>
-                  <td className="px-3 py-2 text-[11px] font-mono">{row.rfmScore.toFixed(3)}</td>
-                  <td className="px-3 py-2">
-                    <SegmentBadge label={row.segmentLabel} color={row.segmentColor} />
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination bar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[11px] text-muted font-mono shrink-0">
-          {sorted.length === 0 ? "0 rows" : `${rowStart}–${rowEnd} of ${sorted.length}`}
-        </span>
-        <div className="flex-1" />
-
-        {/* Rows per page */}
-        <div className="flex items-center gap-1 shrink-0">
-          <span className="text-[11px] text-muted">Rows:</span>
-          {ROWS_PER_PAGE_OPTIONS.map((n) => (
-            <button
-              key={String(n)}
-              onClick={() => { setRpp(n); setPage(1); }}
-              className={cn(
-                "px-2 py-0.5 rounded text-[11px] font-mono transition-colors",
-                rpp === n ? "bg-accent text-white" : "text-muted hover:text-primary hover:bg-surface-hover"
-              )}
-            >
-              {n === "all" ? "All" : n}
-            </button>
-          ))}
-        </div>
-
-        {/* Page navigation */}
-        {rpp !== "all" && totalPages > 1 && (
-          <div className="flex items-center gap-0.5 shrink-0">
-            <button
-              onClick={() => setPage(Math.max(1, safePage - 1))}
-              disabled={safePage === 1}
-              className="p-1 rounded text-muted hover:text-primary hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            {pageNums.map((p) => (
-              <button
-                key={p}
-                onClick={() => setPage(p)}
-                className={cn(
-                  "w-6 h-6 rounded text-[11px] font-mono transition-colors",
-                  safePage === p ? "bg-accent text-white" : "text-muted hover:text-primary hover:bg-surface-hover"
-                )}
-              >
-                {p}
-              </button>
-            ))}
-            <button
-              onClick={() => setPage(Math.min(totalPages, safePage + 1))}
-              disabled={safePage === totalPages}
-              className="p-1 rounded text-muted hover:text-primary hover:bg-surface-hover disabled:opacity-30 disabled:cursor-not-allowed"
-            >
-              <ChevronRight size={14} />
-            </button>
-          </div>
-        )}
-      </div>
+      <VirtualDataTable<CustomerRFM>
+        className="border border-edge rounded-lg overflow-hidden"
+        maxHeight="65vh"
+        data={sorted}
+        columns={columns}
+        rowHeight={36}
+        fontSize="11px"
+        cellPadding="8px 12px"
+        headerPadding="0 12px"
+        rowNumber
+        rowNumberWidth={40}
+        enableCopy
+        getCellTip={getCellTip}
+        sortColumnId={sortCol}
+        sortDir={sortDir}
+        onSort={(id) => toggleSort(id as keyof CustomerRFM)}
+        pagination
+        pageSize={50}
+        pageSizeOptions={[50, 100, 200, 500, 1000]}
+        empty="No customers match the current filter."
+      />
     </div>
   );
 }

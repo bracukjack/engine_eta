@@ -11,11 +11,10 @@ import {
   Upload,
   Download,
   X,
-  ChevronUp,
-  ChevronDown,
   AlertTriangle,
-  ChevronsUpDown,
 } from "lucide-react";
+import type { ColumnDef } from "@tanstack/react-table";
+import { VirtualDataTable, type VDTColumnMeta } from "@/components/data-table/virtual-data-table";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -249,6 +248,7 @@ function BulkTab() {
   const [fileName, setFileName] = useState<string | null>(null);
   const [sortCol, setSortCol] = useState<SortCol>("omtrek");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [skuQuery, setSkuQuery] = useState("");
 
   const tv = parseNilai(threshold);
 
@@ -281,6 +281,38 @@ function BulkTab() {
       return sortDir === "asc" ? cmp : -cmp;
     });
   }, [results, filter, sortCol, sortDir]);
+
+  const lookup = useMemo(() => {
+    const tokens = skuQuery.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+    if (tokens.length === 0) return null;
+    const map = new Map(results.map((r) => [r.code.toLowerCase(), r]));
+    const seen = new Set<string>();
+    const rows: { sku: string; result: OmtrekResult | null }[] = [];
+    for (const s of tokens) {
+      const key = s.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push({ sku: s, result: map.get(key) ?? null });
+    }
+    const over = rows.filter((r) => r.result?.overLimit).length;
+    const under = rows.filter((r) => r.result && !r.result.overLimit).length;
+    const notFound = rows.filter((r) => !r.result).length;
+    return { rows, over, under, notFound };
+  }, [skuQuery, results]);
+
+  const handleExportLookup = useCallback(() => {
+    if (!lookup) return;
+    exportToCsv(
+      ["SKU", "Description", "Omtrek (cm)", "Status"],
+      lookup.rows.map(({ sku, result }) => [
+        sku,
+        result?.description ?? "",
+        result ? result.omtrek : "",
+        result ? (result.overLimit ? "Over Limit" : "Under Limit") : "Not Found",
+      ]),
+      `omtrek-sku-lookup-${new Date().toISOString().slice(0, 10)}`
+    );
+  }, [lookup]);
 
   const handleSort = useCallback(
     (col: SortCol) => {
@@ -430,27 +462,26 @@ function BulkTab() {
     setFileName(null);
     setError(null);
     setWarning(null);
+    setSkuQuery("");
   }, []);
 
-  function SortIcon({ col }: { col: SortCol }) {
-    if (sortCol !== col)
-      return <ChevronsUpDown size={10} className="text-muted/40 ml-1 inline" />;
-    return sortDir === "asc" ? (
-      <ChevronUp size={10} className="text-accent ml-1 inline" />
-    ) : (
-      <ChevronDown size={10} className="text-accent ml-1 inline" />
-    );
-  }
-
-  const COLS: { key: SortCol; label: string; align?: "right" }[] = [
-    { key: "code", label: "Code" },
-    { key: "description", label: "Description" },
-    { key: "class04", label: "Class_04Description" },
-    { key: "l", label: "L (cm)", align: "right" },
-    { key: "w", label: "W (cm)", align: "right" },
-    { key: "h", label: "H (cm)", align: "right" },
-    { key: "omtrek", label: "Omtrek (cm)", align: "right" },
-  ];
+  const columns = useMemo<ColumnDef<OmtrekResult>[]>(() => [
+    { id: "code", header: "Code", size: 130, meta: { cellClassName: "font-mono text-primary" } as VDTColumnMeta, cell: ({ row }) => row.original.code || "—" },
+    { id: "description", header: "Description", size: 220, meta: { cellClassName: "text-primary" } as VDTColumnMeta, cell: ({ row }) => row.original.description || "—" },
+    { id: "class04", header: "Class_04Description", size: 180, meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta, cell: ({ row }) => row.original.class04 },
+    { id: "l", header: "L (cm)", size: 90, meta: { cellClassName: "font-mono text-right" } as VDTColumnMeta, cell: ({ row }) => row.original.l.toFixed(1) },
+    { id: "w", header: "W (cm)", size: 90, meta: { cellClassName: "font-mono text-right" } as VDTColumnMeta, cell: ({ row }) => row.original.w.toFixed(1) },
+    { id: "h", header: "H (cm)", size: 90, meta: { cellClassName: "font-mono text-right" } as VDTColumnMeta, cell: ({ row }) => row.original.h.toFixed(1) },
+    { id: "omtrek", header: "Omtrek (cm)", size: 120, meta: { cellClassName: "font-mono font-semibold text-right" } as VDTColumnMeta, cell: ({ row }) => row.original.omtrek.toFixed(1) },
+    {
+      id: "__status", header: "Status", size: 100, meta: { sortable: false } as VDTColumnMeta,
+      cell: ({ row }) => (
+        <span className={cn("inline-block px-2 py-0.5 rounded text-[10px] font-semibold", row.original.overLimit ? "bg-red-100 text-red-600" : "bg-green-100 text-green-700")}>
+          {row.original.overLimit ? "Over" : "Under"}
+        </span>
+      ),
+    },
+  ], []);
 
   return (
     <div className="space-y-4">
@@ -613,81 +644,123 @@ function BulkTab() {
         </div>
       )}
 
+      {/* SKU Lookup */}
+      {results.length > 0 && (
+        <div className="bg-surface border border-edge rounded-lg overflow-hidden">
+          <div className="px-4 py-2 border-b border-edge bg-panel flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">
+              SKU Lookup
+            </span>
+            <div className="flex items-center gap-3">
+              {lookup && (
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={handleExportLookup}
+                >
+                  <Download size={12} className="mr-1.5" />
+                  Export
+                </Button>
+              )}
+              {skuQuery && (
+                <button
+                  onClick={() => setSkuQuery("")}
+                  className="flex items-center gap-1 text-[11px] text-muted hover:text-red-500 transition-colors"
+                >
+                  <X size={11} />
+                  Clear
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="px-4 py-3 space-y-3">
+            <textarea
+              value={skuQuery}
+              onChange={(e) => setSkuQuery(e.target.value)}
+              placeholder="Paste SKUs here (separated by comma, space, or newline)…"
+              rows={3}
+              className="w-full px-3 py-2 text-xs font-mono bg-white border border-edge rounded resize-y focus:outline-none focus:ring-2 focus:ring-accent/30"
+            />
+
+            {lookup && (
+              <>
+                <div className="flex items-center gap-2 flex-wrap text-[11px] font-mono">
+                  <span className="px-2 py-0.5 rounded bg-panel border border-edge text-muted">
+                    {lookup.rows.length} SKU
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-red-100 text-red-600 font-semibold">
+                    {lookup.over} Over
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-green-100 text-green-700 font-semibold">
+                    {lookup.under} Under
+                  </span>
+                  {lookup.notFound > 0 && (
+                    <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold">
+                      {lookup.notFound} Not found
+                    </span>
+                  )}
+                </div>
+
+                <div className="border border-edge rounded overflow-hidden divide-y divide-edge max-h-72 overflow-y-auto">
+                  {lookup.rows.map(({ sku, result }) => (
+                    <div
+                      key={sku}
+                      className="flex items-center gap-3 px-3 py-1.5 text-[11px] font-mono"
+                    >
+                      <span className="text-primary flex-1 truncate">{sku}</span>
+                      {result ? (
+                        <>
+                          {result.description && (
+                            <span className="text-muted truncate max-w-[220px] hidden sm:block">
+                              {result.description}
+                            </span>
+                          )}
+                          <span className="text-muted tabular-nums w-20 text-right">
+                            {result.omtrek.toFixed(1)} cm
+                          </span>
+                          <span
+                            className={cn(
+                              "inline-block px-2 py-0.5 rounded text-[10px] font-semibold w-14 text-center shrink-0",
+                              result.overLimit
+                                ? "bg-red-100 text-red-600"
+                                : "bg-green-100 text-green-700"
+                            )}
+                          >
+                            {result.overLimit ? "Over" : "Under"}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="inline-block px-2 py-0.5 rounded text-[10px] font-semibold w-14 text-center shrink-0 bg-amber-100 text-amber-700">
+                          N/A
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       {filtered.length > 0 && (
         <div className="bg-surface border border-edge rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-[11px] border-collapse">
-              <thead>
-                <tr className="bg-panel border-b border-edge">
-                  <th className="px-3 py-2 text-left font-semibold text-muted font-mono w-8 shrink-0">
-                    #
-                  </th>
-                  {COLS.map((c) => (
-                    <th
-                      key={c.key}
-                      onClick={() => handleSort(c.key)}
-                      className={cn(
-                        "px-3 py-2 font-semibold text-muted font-mono cursor-pointer hover:text-primary select-none whitespace-nowrap",
-                        c.align === "right" ? "text-right" : "text-left"
-                      )}
-                    >
-                      {c.label}
-                      <SortIcon col={c.key} />
-                    </th>
-                  ))}
-                  <th className="px-3 py-2 text-left font-semibold text-muted font-mono whitespace-nowrap">
-                    Status
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.slice(0, 1000).map((r, i) => (
-                  <tr
-                    key={i}
-                    className={cn(
-                      "border-b border-edge/50 hover:bg-surface-hover transition-colors",
-                      r.overLimit && "bg-red-50/30"
-                    )}
-                  >
-                    <td className="px-3 py-1.5 text-muted font-mono">{i + 1}</td>
-                    <td className="px-3 py-1.5 font-mono text-primary whitespace-nowrap">
-                      {r.code || "—"}
-                    </td>
-                    <td className="px-3 py-1.5 text-primary max-w-[200px]">
-                      <span className="block truncate">{r.description || "—"}</span>
-                    </td>
-                    <td className="px-3 py-1.5 font-mono text-muted whitespace-nowrap">
-                      {r.class04}
-                    </td>
-                    <td className="px-3 py-1.5 font-mono text-right">{r.l.toFixed(1)}</td>
-                    <td className="px-3 py-1.5 font-mono text-right">{r.w.toFixed(1)}</td>
-                    <td className="px-3 py-1.5 font-mono text-right">{r.h.toFixed(1)}</td>
-                    <td className="px-3 py-1.5 font-mono font-semibold text-right">
-                      {r.omtrek.toFixed(1)}
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <span
-                        className={cn(
-                          "inline-block px-2 py-0.5 rounded text-[10px] font-semibold",
-                          r.overLimit
-                            ? "bg-red-100 text-red-600"
-                            : "bg-green-100 text-green-700"
-                        )}
-                      >
-                        {r.overLimit ? "Over" : "Under"}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {filtered.length > 1000 && (
-            <div className="px-4 py-2 border-t border-edge bg-panel text-[11px] text-muted font-mono">
-              Showing 1,000 of {filtered.length.toLocaleString("en-US")} rows
-            </div>
-          )}
+          <VirtualDataTable<OmtrekResult>
+            maxHeight={560}
+            data={filtered}
+            columns={columns}
+            rowHeight={32}
+            fontSize="11px"
+            cellPadding="6px 12px"
+            headerPadding="0 12px"
+            rowNumber
+            sortColumnId={sortCol}
+            sortDir={sortDir}
+            onSort={(id) => handleSort(id as SortCol)}
+            getRowClassName={(r) => cn(r.overLimit && "bg-red-50/30")}
+          />
         </div>
       )}
 
