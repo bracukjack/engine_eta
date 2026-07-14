@@ -105,30 +105,41 @@ export interface MappingResult {
     totalRows: number;
     missingRequired: number;
     publishedTrue: number;
-    /** Total master rows with an Sku, before studio-item filtering. */
-    masterTotal: number;
-    /** Rows skipped because their Sku is not in the studio item list. */
-    skippedNotStudio: number;
+    /** Rows in the uploaded Katana master file (0 if none uploaded). */
+    masterRowsTotal: number;
+    /** Products whose Sku matched a row in the Katana master file. */
+    matchedKatana: number;
+    /** Products with no Katana match — supplement fields (images, body html,
+     *  vendor, tags, SEO, stock, compare-at price...) are left blank. */
+    noKatanaMatch: number;
   };
 }
 
-/**
- * Collect the set of valid SKUs (uppercase) from a parsed studio-item file
- * (e.g. LogItemSearch export). The item code lives in the `Code` column;
- * a few alternative headers are accepted for safety.
- */
-export function collectStudioSkus(itemRows: Record<string, unknown>[]): Set<string> {
-  const set = new Set<string>();
-  if (itemRows.length === 0) return set;
-  const headers = Object.keys(itemRows[0]);
-  const codeCol =
-    ["Code", "code", "Sku", "SKU", "ItemCode", "ProductCode"].find((c) => headers.includes(c)) ??
-    headers[0];
-  for (const row of itemRows) {
-    const code = String(row[codeCol] ?? "").trim();
-    if (code) set.add(code.toUpperCase());
+/** Collapse whitespace + lowercase, so header lookups tolerate stray double spaces. */
+function normHeader(s: string): string {
+  return s.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/** Find the actual row key matching one of `candidates` (whitespace/case-insensitive). */
+function findColumn(headers: string[], candidates: string[]): string | undefined {
+  const normed = headers.map((h) => normHeader(h));
+  for (const c of candidates) {
+    const idx = normed.indexOf(normHeader(c));
+    if (idx !== -1) return headers[idx];
   }
-  return set;
+  return undefined;
+}
+
+/** Index Katana master rows by Sku (uppercase) for O(1) lookup from the item loop. */
+function indexMasterBySku(
+  masterRows: Record<string, unknown>[]
+): Map<string, Record<string, unknown>> {
+  const map = new Map<string, Record<string, unknown>>();
+  for (const row of masterRows) {
+    const sku = str(row["Sku"]);
+    if (sku) map.set(sku.toUpperCase(), row);
+  }
+  return map;
 }
 
 const str = (v: unknown): string =>
@@ -196,47 +207,77 @@ function priceOut(v: unknown): string {
   return n.toFixed(2);
 }
 
+// Studio item column candidates (LogItemSearch export). Header names are
+// matched whitespace/case-insensitively via findColumn, since "Extra field:"
+// columns have inconsistent double-spacing in real exports.
+const ITEM_CODE_HEADERS = ["Code", "code", "Sku", "SKU", "ItemCode", "ProductCode"];
+const ITEM_TITLE_HEADERS = ["DescriptionDescription", "Description"];
+const ITEM_PRICE_HEADERS = ["Extra field: Studio Bizar Base Price"];
+const ITEM_BARCODE_HEADERS = ["Barcode"];
+const ITEM_STATUS_HEADERS = ["Class_10Description"];
+
 /**
- * Transform parsed master rows into Shopify import rows.
+ * Transform parsed studio item rows (LogItemSearch export) into Shopify import
+ * rows. The item file is the source of truth: every row with a Code becomes a
+ * product, and Title / Price / Barcode / Published all come from it directly.
  *
- * When `allowedSkus` is provided (set of uppercase SKUs from the studio item
- * list), only master products whose Sku is in that set are kept — the rest are
- * counted in `stats.skippedNotStudio`. Pass `null` to map every product.
+ * `masterRows` (Katana/KATANAPIM export) is optional and only supplies fields
+ * that don't exist in the item file — Body (HTML), Vendor, collection Tags/
+ * Type, images, SEO Title/Description, stock qty and compare-at price. When a
+ * Sku has no Katana match those fields are simply left blank (counted in
+ * `stats.noKatanaMatch`) — the product is still exported.
  */
 export function transformToShopify(
-  masterRows: Record<string, unknown>[],
-  allowedSkus: Set<string> | null = null
+  itemRows: Record<string, unknown>[],
+  masterRows: Record<string, unknown>[] | null = null
 ): MappingResult {
   const products: MappedProduct[] = [];
   let totalImages = 0;
   let missingRequired = 0;
   let publishedTrue = 0;
-  let masterTotal = 0;
-  let skippedNotStudio = 0;
+  let matchedKatana = 0;
+  let noKatanaMatch = 0;
+
+  const masterIndex = masterRows ? indexMasterBySku(masterRows) : null;
+
+  if (itemRows.length === 0) {
+    return {
+      products: [],
+      rows: [],
+      stats: {
+        products: 0, totalImages: 0, totalRows: 0, missingRequired: 0,
+        publishedTrue: 0, masterRowsTotal: masterRows?.length ?? 0,
+        matchedKatana: 0, noKatanaMatch: 0,
+      },
+    };
+  }
+
+  const headers = Object.keys(itemRows[0]);
+  const codeKey = findColumn(headers, ITEM_CODE_HEADERS) ?? headers[0];
+  const titleKey = findColumn(headers, ITEM_TITLE_HEADERS);
+  const priceKey = findColumn(headers, ITEM_PRICE_HEADERS);
+  const barcodeKey = findColumn(headers, ITEM_BARCODE_HEADERS);
+  const statusKey = findColumn(headers, ITEM_STATUS_HEADERS);
 
   // Track handle usage so duplicate titles get unique handles (-2, -3, …).
   // Shopify treats rows sharing a handle as one product, so this avoids
   // silently merging distinct products that happen to share a name.
   const handleCounts = new Map<string, number>();
 
-  for (const row of masterRows) {
-    const sku = str(row["Sku"]);
-    if (sku === "") continue; // skip rows without an SKU
-    masterTotal++;
+  for (const row of itemRows) {
+    const sku = str(row[codeKey]);
+    if (sku === "") continue; // skip rows without a code
 
-    // Studio filter: keep only SKUs present in the studio item list
-    if (allowedSkus && !allowedSkus.has(sku.toUpperCase())) {
-      skippedNotStudio++;
-      continue;
-    }
+    const kRow = masterIndex ? masterIndex.get(sku.toUpperCase()) ?? null : null;
+    if (masterIndex) { if (kRow) matchedKatana++; else noKatanaMatch++; }
 
-    const name = str(row["Name"]);
-    // Handle is generated from the Title (Name); fall back to Sku if empty.
+    const name = str(titleKey ? row[titleKey] : "");
+    // Handle is generated from the Title; fall back to Sku if empty.
     const baseHandle = toHandle(name) || toHandle(sku);
     const seen = handleCounts.get(baseHandle) ?? 0;
     handleCounts.set(baseHandle, seen + 1);
     const handle = seen === 0 ? baseHandle : `${baseHandle}-${seen + 1}`;
-    const isPublished = str(row["Published"]).toLowerCase() === "true";
+    const isPublished = str(statusKey ? row[statusKey] : "").toUpperCase() === "YES";
     if (isPublished) publishedTrue++;
 
     // ── Main row ─────────────────────────────────────────────────────────
@@ -245,10 +286,10 @@ export function transformToShopify(
 
     main["Handle"] = handle;
     main["Title"] = name;
-    main["Body (HTML)"] = str(row["FullDescription"]);
-    main["Vendor"] = str(row["Manufacturer"]);
+    main["Body (HTML)"] = str(kRow?.["FullDescription"]);
+    main["Vendor"] = str(kRow?.["Manufacturer"]);
     // Collection tree from CategoryTrail → flat tag per level (Shopify smart collections)
-    const { tags: catTags, type: catType } = parseCategoryTrail(str(row["CategoryTrail"]));
+    const { tags: catTags, type: catType } = parseCategoryTrail(str(kRow?.["CategoryTrail"]));
     main["Product Category"] = "";
     main["Type"] = catType;
     main["Tags"] = catTags.join(", ");
@@ -258,31 +299,31 @@ export function transformToShopify(
     main["Variant SKU"] = sku;
     main["Variant Grams"] = "0";
     main["Variant Inventory Tracker"] = "shopify";
-    main["Variant Inventory Qty"] = String(Math.round(parseNum(row["StockQuantity"]) ?? 0));
+    main["Variant Inventory Qty"] = String(Math.round(parseNum(kRow?.["StockQuantity"]) ?? 0));
     main["Variant Inventory Policy"] = "deny";
     main["Variant Fulfillment Service"] = "manual";
-    main["Variant Price"] = priceOut(row["Price"]);
-    main["Variant Compare At Price"] = priceOut(row["OldPrice"]);
+    main["Variant Price"] = priceOut(priceKey ? row[priceKey] : undefined);
+    main["Variant Compare At Price"] = priceOut(kRow?.["OldPrice"]);
     main["Variant Requires Shipping"] = "TRUE";
     main["Variant Taxable"] = "TRUE";
-    main["Variant Barcode"] = str(row["Gtin"]);
+    main["Variant Barcode"] = str(barcodeKey ? row[barcodeKey] : "");
     main["Variant Weight Unit"] = "kg";
     main["Gift Card"] = "FALSE";
-    main["SEO Title"] = str(row["MetaTitle"]);
-    main["SEO Description"] = str(row["MetaDescription"]);
+    main["SEO Title"] = str(kRow?.["MetaTitle"]);
+    main["SEO Description"] = str(kRow?.["MetaDescription"]);
     main["Status"] = isPublished ? "active" : "draft";
 
-    // Metafields
+    // Metafields (Katana-only — supplement fields)
     for (const { spec, col } of METAFIELD_MAP) {
-      main[col] = str(row[spec]);
+      main[col] = str(kRow?.[spec]);
     }
 
-    // ── Images ───────────────────────────────────────────────────────────
+    // ── Images (Katana-only — supplement fields) ────────────────────────
     const images: { src: string; alt: string }[] = [];
     for (let i = 1; i <= MAX_IMAGES; i++) {
-      const src = str(row[`Image_${i}`]);
+      const src = str(kRow?.[`Image_${i}`]);
       if (src === "") continue;
-      images.push({ src, alt: str(row[`Image_AltTag_${i}`]) });
+      images.push({ src, alt: str(kRow?.[`Image_AltTag_${i}`]) });
     }
     totalImages += images.length;
 
@@ -332,8 +373,9 @@ export function transformToShopify(
       totalRows: rows.length,
       missingRequired,
       publishedTrue,
-      masterTotal,
-      skippedNotStudio,
+      masterRowsTotal: masterRows?.length ?? 0,
+      matchedKatana,
+      noKatanaMatch,
     },
   };
 }

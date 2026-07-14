@@ -6,7 +6,6 @@ import { parseFileBuffer, getXLSX } from "@/lib/parsers";
 import { cn } from "@/lib/utils";
 import {
   transformToShopify,
-  collectStudioSkus,
   generateCsv,
   SHOPIFY_COLUMNS,
   DISPLAY_COLUMNS,
@@ -106,28 +105,22 @@ export function MasterMappingTab() {
   };
 
   const handleProcess = useCallback(async () => {
-    if (!masterFile) return;
+    if (!itemsFile) return;
     setProcessing(true);
     setError(null);
     try {
-      const masterRows = await parseFileBuffer(await masterFile.arrayBuffer());
-      if (masterRows.length === 0) throw new Error("No rows found in the master file.");
+      const itemRows = await parseFileBuffer(await itemsFile.arrayBuffer());
+      if (itemRows.length === 0) throw new Error("No rows found in the studio items file.");
 
-      let allowed: Set<string> | null = null;
-      if (itemsFile) {
-        const itemRows = await parseFileBuffer(await itemsFile.arrayBuffer());
-        allowed = collectStudioSkus(itemRows);
-        if (allowed.size === 0)
-          throw new Error("No item codes found in the studio items file (expected a 'Code' column).");
+      let masterRows: Record<string, unknown>[] | null = null;
+      if (masterFile) {
+        masterRows = await parseFileBuffer(await masterFile.arrayBuffer());
+        if (masterRows.length === 0) throw new Error("No rows found in the Katana master file.");
       }
 
-      const mapped = transformToShopify(masterRows, allowed);
+      const mapped = transformToShopify(itemRows, masterRows);
       if (mapped.products.length === 0)
-        throw new Error(
-          allowed
-            ? "No master products matched the studio item list."
-            : "No products with an Sku were found in the master file."
-        );
+        throw new Error("No products with a Code were found in the studio items file.");
       setResult(mapped);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -246,20 +239,9 @@ export function MasterMappingTab() {
       <div className="shrink-0 border-b border-edge bg-surface/50 px-4 py-3 flex flex-col gap-3">
         <div className="flex items-center gap-3 flex-wrap">
           <FileSlot
-            file={masterFile}
-            label="Master Data File"
-            hint="KATANAPIM .xlsx"
-            accept={{
-              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
-              "application/vnd.ms-excel": [".xls"],
-            }}
-            onPick={(f) => reset(f, itemsFile)}
-            onClear={() => reset(null, itemsFile)}
-          />
-          <FileSlot
             file={itemsFile}
             label="Studio Items File"
-            hint="LogItemSearch .csv (studio SKUs)"
+            hint="LogItemSearch .csv (required)"
             accept={{
               "text/csv": [".csv"],
               "application/vnd.ms-excel": [".csv", ".xls"],
@@ -268,8 +250,19 @@ export function MasterMappingTab() {
             onPick={(f) => reset(masterFile, f)}
             onClear={() => reset(masterFile, null)}
           />
+          <FileSlot
+            file={masterFile}
+            label="Master Data File"
+            hint="KATANAPIM .xlsx (optional)"
+            accept={{
+              "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+              "application/vnd.ms-excel": [".xls"],
+            }}
+            onPick={(f) => reset(f, itemsFile)}
+            onClear={() => reset(null, itemsFile)}
+          />
 
-          <Button variant="accent" size="sm" onClick={handleProcess} disabled={!masterFile || processing}>
+          <Button variant="accent" size="sm" onClick={handleProcess} disabled={!itemsFile || processing}>
             {processing ? <Loader2 size={14} className="animate-spin mr-1.5" /> : <Play size={12} className="mr-1.5" />}
             {processing ? "Mapping..." : "Map to Shopify"}
           </Button>
@@ -302,7 +295,7 @@ export function MasterMappingTab() {
 
           {!result && (
             <span className="text-[11px] text-muted font-mono ml-auto">
-              {itemsFile ? "studio filter ON" : "no studio filter — maps all products"}
+              {masterFile ? "Katana supplement ON" : "no Katana file — supplement fields will be blank"}
             </span>
           )}
         </div>
@@ -311,9 +304,13 @@ export function MasterMappingTab() {
         {result && (
           <div className="flex flex-wrap items-center gap-1.5">
             <Stat label="Products" value={result.stats.products} accent />
-            <Stat label="Master" value={result.stats.masterTotal} />
-            {result.stats.skippedNotStudio > 0 && (
-              <Stat label="Skipped (non-studio)" value={result.stats.skippedNotStudio} warn />
+            {result.stats.masterRowsTotal > 0 && (
+              <>
+                <Stat label="Katana matched" value={result.stats.matchedKatana} />
+                {result.stats.noKatanaMatch > 0 && (
+                  <Stat label="No Katana match" value={result.stats.noKatanaMatch} warn />
+                )}
+              </>
             )}
             <Stat label="Images" value={result.stats.totalImages} />
             <Stat label="CSV Rows" value={result.stats.totalRows} />
@@ -376,8 +373,9 @@ export function MasterMappingTab() {
           <div className="text-center text-muted">
             <p className="text-sm font-medium">No mapping yet</p>
             <p className="text-[11px] mt-1 max-w-sm">
-              Upload the KATANAPIM master XLSX and the studio items file, then click
-              &ldquo;Map to Shopify&rdquo;. Only SKUs present in the studio items file are exported.
+              Upload the studio items file (LogItemSearch), then click &ldquo;Map to
+              Shopify&rdquo;. Every item is exported; the Katana master XLSX is
+              optional and only fills in fields the item file doesn&rsquo;t have.
             </p>
           </div>
         </div>
