@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import type { FileKey, OutputRow, Summary, TableSize, ExportRowLimit, PreviewData, BatchProgress } from "./types";
+import type { FileKey, OutputRow, Summary, TableSize, ExportRowLimit, PreviewData, BatchProgress, DecimalSeparator } from "./types";
 import { OUTPUT_COLUMNS } from "./types";
 import { idbStorage } from "./idb-storage";
 
@@ -65,6 +65,10 @@ interface AppStore {
   // ── Table Size ─────────────────────────────────────────────────────
   tableSize: TableSize;
   setTableSize: (s: TableSize) => void;
+
+  // ── Decimal Separator (show / copy / export) ──────────────────────
+  decimalSeparator: DecimalSeparator;
+  setDecimalSeparator: (s: DecimalSeparator) => void;
 
   // ── Export Row Limit ───────────────────────────────────────────────
   exportRowLimit: ExportRowLimit;
@@ -191,6 +195,10 @@ export const useAppStore = create<AppStore>()(
   tableSize: "M",
   setTableSize: (s) => set({ tableSize: s }),
 
+  // Decimal Separator (show / copy / export)
+  decimalSeparator: "comma",
+  setDecimalSeparator: (s) => set({ decimalSeparator: s }),
+
   // Export Row Limit
   exportRowLimit: "all",
   customRowLimit: 50,
@@ -231,6 +239,7 @@ export const useAppStore = create<AppStore>()(
         results: s.results,
         summary: s.summary,
         visibleColumns: s.visibleColumns,
+        decimalSeparator: s.decimalSeparator,
       }),
       version: 1,
       migrate: (persisted) => {

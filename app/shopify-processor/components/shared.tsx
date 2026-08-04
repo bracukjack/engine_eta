@@ -6,7 +6,7 @@ import { useAppStore } from "@/lib/store";
 import { DataTable } from "@/components/data-table/data-table";
 import { PreviewTable } from "@/components/preview-table/preview-table";
 import { Button } from "@/components/ui/button";
-import type { BatchProgress, ExportRowLimit, TableSize } from "@/lib/types";
+import type { BatchProgress, DecimalSeparator, ExportRowLimit, TableSize } from "@/lib/types";
 import { BestSellerTab } from "./best-seller-tab";
 import { MasterMappingTab } from "./master-mapping-tab";
 
@@ -368,6 +368,37 @@ export function SizeToggle({
           }`}
         >
           {s}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function DecimalToggle({
+  value,
+  onChange,
+}: {
+  value: DecimalSeparator;
+  onChange: (s: DecimalSeparator) => void;
+}) {
+  const options: { value: DecimalSeparator; label: string; title: string }[] = [
+    { value: "comma", label: "1.234,56", title: "Comma as decimal separator (1.234,56)" },
+    { value: "dot", label: "1,234.56", title: "Dot as decimal separator (1,234.56)" },
+  ];
+  return (
+    <div className="inline-flex border border-edge rounded overflow-hidden" title="Decimal separator for prices — applies to the table, copied values, and exports">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          onClick={() => onChange(o.value)}
+          title={o.title}
+          className={`px-2 py-1 text-[10px] font-mono cursor-pointer transition-colors ${
+            value === o.value
+              ? "bg-accent text-white"
+              : "bg-white text-muted hover:bg-slate-50"
+          }`}
+        >
+          {o.label}
         </button>
       ))}
     </div>

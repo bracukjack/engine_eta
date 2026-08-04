@@ -111,6 +111,8 @@ export const INTEGER_OUTPUT_COLUMNS: Set<keyof OutputRow> = new Set([
 
 export type TableSize = "S" | "M" | "L";
 
+export type DecimalSeparator = "comma" | "dot";
+
 export const TABLE_SIZE_CONFIG: Record<TableSize, { rowHeight: number; fontSize: string; cellPadding: string }> = {
   S: { rowHeight: 32, fontSize: "11px", cellPadding: "4px 8px" },
   M: { rowHeight: 44, fontSize: "13px", cellPadding: "8px 12px" },

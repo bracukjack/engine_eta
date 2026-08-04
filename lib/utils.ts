@@ -1,5 +1,6 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import type { DecimalSeparator } from "./types";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -43,28 +44,61 @@ export function buildSearchMatcher(
 }
 
 /**
- * Format a number as European price:
- * comma as decimal separator, dot as thousands separator, always 2 decimal places.
- * 1 → "1,00"  |  2.5 → "2,50"  |  1234.56 → "1.234,56"
+ * Format a number as a price for on-screen display, always 2 decimal places.
+ * `separator` picks which character is the decimal mark; the thousands
+ * separator is always the other one, so the two never collide.
+ * comma (default): dot thousands, comma decimal → 1234.56 → "1.234,56"
+ * dot: comma thousands, dot decimal → 1234.56 → "1,234.56"
  * null / undefined / NaN → ""
  */
-export function formatPrice(value: number | null | undefined): string {
+export function formatPrice(
+  value: number | null | undefined,
+  separator: DecimalSeparator = "comma"
+): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "";
   const fixed = Math.abs(value).toFixed(2);
   const [intPart, decPart] = fixed.split(".");
-  const intFormatted = intPart!.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  const thousandsChar = separator === "comma" ? "." : ",";
+  const decimalChar = separator === "comma" ? "," : ".";
+  const intFormatted = intPart!.replace(/\B(?=(\d{3})+(?!\d))/g, thousandsChar);
   const sign = value < 0 ? "-" : "";
-  return `${sign}${intFormatted},${decPart}`;
+  return `${sign}${intFormatted}${decimalChar}${decPart}`;
 }
 
 /**
- * Format a number as a Shopify-safe price for export:
- * dot as decimal separator, no thousands separator, always 2 decimal places.
- * 69.95 → "69.95"  |  1234.56 → "1234.56"  |  null / undefined / NaN → ""
+ * Format a number as a Shopify-safe price for export: no thousands
+ * separator, always 2 decimal places. `separator` picks the decimal mark.
+ * dot (default): 1234.56 → "1234.56"  |  comma: 1234.56 → "1234,56"
+ * null / undefined / NaN → ""
  */
-export function formatPriceExport(value: number | null | undefined): string {
+export function formatPriceExport(
+  value: number | null | undefined,
+  separator: DecimalSeparator = "dot"
+): string {
   if (value === null || value === undefined || Number.isNaN(value)) return "";
-  return value.toFixed(2);
+  const fixed = value.toFixed(2);
+  return separator === "comma" ? fixed.replace(".", ",") : fixed;
+}
+
+/**
+ * Parse a user-typed/pasted price string, honoring the given decimal
+ * separator. Strips thousands grouping first so pasting a "show"-formatted
+ * value (with grouping) round-trips correctly.
+ * comma: "1.234,56" or "1234,56" → 1234.56
+ * dot: "1,234.56" or "1234.56" → 1234.56
+ * "" / unparseable → null
+ */
+export function parsePriceInput(
+  raw: string,
+  separator: DecimalSeparator = "dot"
+): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === "") return null;
+  const thousandsChar = separator === "comma" ? "." : ",";
+  const decimalChar = separator === "comma" ? "," : ".";
+  const normalized = trimmed.split(thousandsChar).join("").split(decimalChar).join(".");
+  const n = parseFloat(normalized);
+  return Number.isNaN(n) ? null : n;
 }
 
 /**

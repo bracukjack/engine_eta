@@ -13,7 +13,7 @@ import { StatChip } from "@/components/status-badge/status-badge";
 import { ColumnToggle } from "@/components/column-toggle/column-toggle";
 import { Button } from "@/components/ui/button";
 import { Play, Loader2, X } from "lucide-react";
-import { ExportDropdown, SizeToggle, RightPanel } from "./components/shared";
+import { ExportDropdown, SizeToggle, DecimalToggle, RightPanel } from "./components/shared";
 
 const FILE_KEYS: FileKey[] = ["shopify", "sales", "stock", "purchase", "items", "published"];
 
@@ -91,6 +91,8 @@ function ShopifyProcessorInner() {
   const sortDirection = useAppStore((s) => s.sortDirection);
   const tableSize = useAppStore((s) => s.tableSize);
   const setTableSize = useAppStore((s) => s.setTableSize);
+  const decimalSeparator = useAppStore((s) => s.decimalSeparator);
+  const setDecimalSeparator = useAppStore((s) => s.setDecimalSeparator);
   const exportRowLimit = useAppStore((s) => s.exportRowLimit);
   const customRowLimit = useAppStore((s) => s.customRowLimit);
   const setExportRowLimit = useAppStore((s) => s.setExportRowLimit);
@@ -269,7 +271,7 @@ function ShopifyProcessorInner() {
         } else if (key === "B2C") {
           obj[exportKey] = row[key] === "Yes" ? "TRUE" : "FALSE";
         } else if (PRICE_COLUMNS.has(key)) {
-          obj[exportKey] = formatPriceExport(row[key] as number | null) || 0;
+          obj[exportKey] = formatPriceExport(row[key] as number | null, decimalSeparator) || 0;
         } else if (INTEGER_OUTPUT_COLUMNS.has(key)) {
           const n = row[key] as number | null;
           obj[exportKey] = n !== null && n !== undefined ? Math.round(n) : 0;
@@ -279,7 +281,7 @@ function ShopifyProcessorInner() {
       }
       return obj;
     });
-  }, [sortedRows, exportLimit, visibleColumns, excludeSkus]);
+  }, [sortedRows, exportLimit, visibleColumns, excludeSkus, decimalSeparator]);
 
   const handleExportXlsx = useCallback(async () => {
     const date = new Date().toISOString().slice(0, 10);
@@ -326,7 +328,7 @@ function ShopifyProcessorInner() {
           const exportKey = EXPORT_KEY_MAP[key] ?? key;
           if (key === "No") obj[exportKey] = startRow + j;
           else if (key === "B2C") obj[exportKey] = row[key] === "Yes" ? "TRUE" : "FALSE";
-          else if (PRICE_COLUMNS.has(key)) obj[exportKey] = formatPriceExport(row[key] as number | null) || 0;
+          else if (PRICE_COLUMNS.has(key)) obj[exportKey] = formatPriceExport(row[key] as number | null, decimalSeparator) || 0;
           else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[exportKey] = n !== null && n !== undefined ? Math.round(n) : 0; }
           else obj[exportKey] = row[key];
         }
@@ -350,7 +352,7 @@ function ShopifyProcessorInner() {
     a.download = `shopify_processed_${date}_${totalFiles}files_${totalRows}rows.zip`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg, excludeSkus]);
+  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg, excludeSkus, decimalSeparator]);
 
   const handleExportCsv = useCallback(async () => {
     const date = new Date().toISOString().slice(0, 10);
@@ -395,7 +397,7 @@ function ShopifyProcessorInner() {
           const exportKey = EXPORT_KEY_MAP[key] ?? key;
           if (key === "No") obj[exportKey] = startRow + j;
           else if (key === "B2C") obj[exportKey] = row[key] === "Yes" ? "TRUE" : "FALSE";
-          else if (PRICE_COLUMNS.has(key)) obj[exportKey] = formatPriceExport(row[key] as number | null) || 0;
+          else if (PRICE_COLUMNS.has(key)) obj[exportKey] = formatPriceExport(row[key] as number | null, decimalSeparator) || 0;
           else if (INTEGER_OUTPUT_COLUMNS.has(key)) { const n = row[key] as number | null; obj[exportKey] = n !== null && n !== undefined ? Math.round(n) : 0; }
           else obj[exportKey] = row[key];
         }
@@ -416,7 +418,7 @@ function ShopifyProcessorInner() {
     a.download = `shopify_processed_${date}_${totalFiles}files_${totalRows}rows.zip`;
     a.click();
     URL.revokeObjectURL(url);
-  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg, excludeSkus]);
+  }, [splitMode, buildExportData, sortedRows, exportLimit, rowsPerFile, visibleColumns, setBatchProgress, setExportSuccessMsg, excludeSkus, decimalSeparator]);
 
   // Count ready files
   const readyCount = useMemo(
@@ -520,6 +522,7 @@ function ShopifyProcessorInner() {
                 <span className="text-[11px] text-green-600 font-mono">✓ {exportSuccessMsg}</span>
               )}
               <SizeToggle value={tableSize} onChange={setTableSize} />
+              <DecimalToggle value={decimalSeparator} onChange={setDecimalSeparator} />
             </>
           )}
 

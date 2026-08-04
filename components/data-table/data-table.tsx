@@ -3,9 +3,9 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import type { ColumnDef } from "@tanstack/react-table";
-import { cn, formatPrice, buildSearchMatcher } from "@/lib/utils";
+import { cn, formatPrice, formatPriceExport, parsePriceInput, buildSearchMatcher } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
-import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS, TABLE_SIZE_CONFIG, type OutputRow } from "@/lib/types";
+import { OUTPUT_COLUMNS, PRICE_COLUMNS, INTEGER_OUTPUT_COLUMNS, TABLE_SIZE_CONFIG, type OutputRow, type DecimalSeparator } from "@/lib/types";
 import { StatusBadge, PolicyBadge } from "@/components/status-badge/status-badge";
 import { VirtualDataTable } from "@/components/data-table/virtual-data-table";
 
@@ -46,11 +46,13 @@ function EditableCell({
   column,
   row,
   fontSize,
+  decimalSeparator,
 }: {
   sku: string;
   column: keyof OutputRow;
   row: OutputRow;
   fontSize: string;
+  decimalSeparator: DecimalSeparator;
 }) {
   const updateRow = useAppStore((s) => s.updateRow);
   const [editing, setEditing] = useState(false);
@@ -65,9 +67,15 @@ function EditableCell({
   // On double-click → enter edit mode
   const handleDoubleClick = useCallback(() => {
     if (!EDITABLE_COLUMNS.has(column)) return;
-    setDraft(value === null || value === undefined ? "" : String(value));
+    if (PRICE_COLUMNS.has(column)) {
+      // Match the "show" format so the auto-selected text (and anything
+      // copied from it) uses the same decimal separator as the table.
+      setDraft(formatPriceExport(value as number | null, decimalSeparator));
+    } else {
+      setDraft(value === null || value === undefined ? "" : String(value));
+    }
     setEditing(true);
-  }, [column, value]);
+  }, [column, value, decimalSeparator]);
 
   // Focus input/select when editing starts
   useEffect(() => {
@@ -124,12 +132,11 @@ function EditableCell({
     }
     // Numeric price columns
     if (PRICE_COLUMNS.has(column)) {
-      const n = trimmed === "" ? null : parseFloat(trimmed);
-      const v = n === null || isNaN(n) ? null : n;
+      const v = parsePriceInput(trimmed, decimalSeparator);
       updateRow(sku, { [column]: v } as Partial<OutputRow>);
       return;
     }
-  }, [column, row, sku, updateRow]);
+  }, [column, row, sku, updateRow, decimalSeparator]);
 
   const cancel = useCallback(() => setEditing(false), []);
 
@@ -184,7 +191,7 @@ function EditableCell({
       className={cn("w-full h-full flex items-center", isEditable && "cursor-text group")}
       title={isEditable ? "Double-click to edit" : undefined}
     >
-      <CellValue column={column} value={value} fontSize={fontSize} />
+      <CellValue column={column} value={value} fontSize={fontSize} decimalSeparator={decimalSeparator} />
       {isEditable && (
         <span className="ml-1 opacity-0 group-hover:opacity-30 text-[8px] text-muted shrink-0">✎</span>
       )}
@@ -247,7 +254,7 @@ function ReferenceCell({ value, fontSize }: { value: string; fontSize: string })
   );
 }
 
-function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value: unknown; fontSize: string }) {
+function CellValue({ column, value, fontSize, decimalSeparator }: { column: keyof OutputRow; value: unknown; fontSize: string; decimalSeparator: DecimalSeparator }) {
   if (column === "Status") {
     return <StatusBadge status={value as "active" | "draft"} />;
   }
@@ -265,8 +272,9 @@ function CellValue({ column, value, fontSize }: { column: keyof OutputRow; value
     return <span className="text-muted/40 text-[10px]">—</span>;
   }
   if (PRICE_COLUMNS.has(column)) {
-    const formatted = formatPrice(value as number | null);
-    return <span className="font-mono" style={{ fontSize }}>{formatted || "0,00"}</span>;
+    const formatted = formatPrice(value as number | null, decimalSeparator);
+    const zero = decimalSeparator === "comma" ? "0,00" : "0.00";
+    return <span className="font-mono" style={{ fontSize }}>{formatted || zero}</span>;
   }
   if (INTEGER_OUTPUT_COLUMNS.has(column)) {
     const num = value as number | null;
@@ -299,6 +307,7 @@ export function DataTable() {
   const toggleSort = useAppStore((s) => s.toggleSort);
   const visibleColumns = useAppStore((s) => s.visibleColumns);
   const tableSize = useAppStore((s) => s.tableSize);
+  const decimalSeparator = useAppStore((s) => s.decimalSeparator);
 
   const sizeConfig = TABLE_SIZE_CONFIG[tableSize];
   // Horizontal padding shared between header & body cells so columns line up precisely
@@ -388,10 +397,11 @@ export function DataTable() {
                   column={c.key}
                   row={row.original}
                   fontSize={sizeConfig.fontSize}
+                  decimalSeparator={decimalSeparator}
                 />
               ),
       })),
-    [visibleColumns, sizeConfig.fontSize]
+    [visibleColumns, sizeConfig.fontSize, decimalSeparator]
   );
 
   if (results.length === 0) {
