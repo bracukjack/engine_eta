@@ -122,9 +122,13 @@ export function BestSellerTab() {
           .split(",")
           .map((t) => t.trim())
           .filter(Boolean);
-        // Merge "Best Seller" into existing tags only for matched products
-        if (r.isBestSeller && !existing.some((t) => t.toLowerCase() === "best seller")) {
+        // Sync "Best Seller" tag: add when matched, remove when not — otherwise the
+        // tag never clears for products that drop out of a later best-seller file.
+        const bsIdx = existing.findIndex((t) => t.toLowerCase() === "best seller");
+        if (r.isBestSeller && bsIdx === -1) {
           existing.push("Best Seller");
+        } else if (!r.isBestSeller && bsIdx !== -1) {
+          existing.splice(bsIdx, 1);
         }
         return {
           handle: r.handle,
