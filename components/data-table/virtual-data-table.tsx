@@ -58,6 +58,15 @@ export interface VirtualDataTableProps<T> {
   /** Draw vertical borders between columns (default false). */
   bordered?: boolean;
 
+  /**
+   * Make the table fill its container instead of stopping at the sum of the
+   * column sizes: the named column absorbs the leftover width (its `size`
+   * becomes a minimum, its `maxSize` — if set — a cap), and the table still
+   * scrolls horizontally when the container is narrower than that sum. Omit for
+   * fixed-width columns.
+   */
+  stretchColumnId?: string;
+
   /** Controlled sorting (caller owns the cycle). `columnId` is the column's id. */
   sortColumnId?: string | null;
   sortDir?: "asc" | "desc";
@@ -108,6 +117,7 @@ export function VirtualDataTable<T>({
   headerPadding = "0 8px",
   overscan = 10,
   bordered = false,
+  stretchColumnId,
   sortColumnId = null,
   sortDir = "asc",
   onSort,
@@ -190,7 +200,14 @@ export function VirtualDataTable<T>({
             : undefined
         }
       >
-        <table className="grid" style={{ width: totalWidth }}>
+        <table
+          className="grid"
+          style={
+            stretchColumnId
+              ? { width: "100%", minWidth: totalWidth }
+              : { width: totalWidth }
+          }
+        >
           <thead className="grid sticky top-0 z-20 bg-surface border-b border-edge">
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id} className="flex w-full" style={{ height: headerHeight }}>
@@ -219,7 +236,16 @@ export function VirtualDataTable<T>({
                         isSorted ? "text-amber-600" : "text-muted hover:text-primary",
                         meta?.headerClassName
                       )}
-                      style={{ width: header.getSize(), padding: headerPadding }}
+                      style={{
+                        width: header.getSize(),
+                        padding: headerPadding,
+                        ...(stretchColumnId === id
+                          ? {
+                              flexGrow: 1,
+                              maxWidth: header.column.columnDef.maxSize,
+                            }
+                          : null),
+                      }}
                       title={meta?.headerTitle ?? (typeof label === "string" ? label : id)}
                     >
                       <span className="truncate flex-1 text-left">
@@ -269,7 +295,17 @@ export function VirtualDataTable<T>({
                       <td
                         key={cell.id}
                         className={cn("shrink-0 truncate text-left", border, meta?.cellClassName)}
-                        style={{ width: cell.column.getSize(), fontSize, padding: cellPadding }}
+                        style={{
+                          width: cell.column.getSize(),
+                          fontSize,
+                          padding: cellPadding,
+                          ...(stretchColumnId === id
+                            ? {
+                                flexGrow: 1,
+                                maxWidth: cell.column.columnDef.maxSize,
+                              }
+                            : null),
+                        }}
                         data-tip={getCellTip?.(r, id)}
                       >
                         {flexRender(cell.column.columnDef.cell, cell.getContext())}

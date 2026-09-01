@@ -6,15 +6,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { parseFileBuffer } from "@/lib/parsers";
 import { exportToCsv } from "@/lib/utils";
-import {
-  Ruler,
-  Upload,
-  Download,
-  X,
-  AlertTriangle,
-} from "lucide-react";
+import { Ruler, Upload, Download, X, AlertTriangle } from "lucide-react";
 import type { ColumnDef } from "@tanstack/react-table";
-import { VirtualDataTable, type VDTColumnMeta } from "@/components/data-table/virtual-data-table";
+import {
+  VirtualDataTable,
+  type VDTColumnMeta,
+} from "@/components/data-table/virtual-data-table";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -41,7 +38,7 @@ function hitungOmtrek(l: number, w: number, h: number): number {
   const max = Math.max(...vals);
   const min = Math.min(...vals);
   const median = vals.reduce((a, b) => a + b, 0) - max - min;
-  return max + (2 * median) + (2 * min);
+  return max + 2 * median + 2 * min;
 }
 
 function parseNilai(val: unknown): number {
@@ -50,12 +47,41 @@ function parseNilai(val: unknown): number {
   return parseFloat(s);
 }
 
+/** Normalize a header for matching: trim, lowercase, collapse inner whitespace. */
+function normKey(k: string): string {
+  return k.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Resolve a real column name from the file's headers, first candidate wins.
+ * Both sides are normalized, so matching survives the inconsistent spacing Exact
+ * exports use — e.g. the double space in "Extra field:  Packaging - L (cm)" vs
+ * the single one in "Extra field: Packaging - W (cm)".
+ */
+function findCol(keys: string[], candidates: string[]): string | null {
+  const normed = keys.map(normKey);
+  for (const c of candidates) {
+    const idx = normed.indexOf(normKey(c));
+    if (idx !== -1) return keys[idx]!;
+  }
+  return null;
+}
+
+// LogItemSearch export column names. The export writes the item title as
+// "DescriptionDescription" (field name + label), not "Description".
+const CODE_HEADERS = ["Code", "Sku", "SKU", "ItemCode", "ProductCode"];
+const DESC_HEADERS = ["DescriptionDescription"];
+
 function getBreakdown(l: number, w: number, h: number) {
   const pairs = [
     { label: "L", val: l },
     { label: "W", val: w },
     { label: "H", val: h },
-  ].sort((a, b) => b.val - a.val) as [{ label: string; val: number }, { label: string; val: number }, { label: string; val: number }];
+  ].sort((a, b) => b.val - a.val) as [
+    { label: string; val: number },
+    { label: string; val: number },
+    { label: string; val: number },
+  ];
   return { max: pairs[0], median: pairs[1], min: pairs[2] };
 }
 
@@ -80,7 +106,7 @@ export default function OmtrekCalculatorPage() {
                   "inline-flex items-center gap-1.5 px-2.5 h-6 text-[11px] font-semibold rounded transition-colors",
                   activeTab === t
                     ? "bg-white text-primary shadow-sm border border-edge"
-                    : "text-muted hover:text-primary"
+                    : "text-muted hover:text-primary",
                 )}
               >
                 {t === "single" ? "Single Item" : "Bulk CSV"}
@@ -110,7 +136,8 @@ function SingleTab() {
   const hv = parseNilai(h);
   const tv = parseNilai(threshold);
 
-  const valid = !isNaN(lv) && !isNaN(wv) && !isNaN(hv) && lv > 0 && wv > 0 && hv > 0;
+  const valid =
+    !isNaN(lv) && !isNaN(wv) && !isNaN(hv) && lv > 0 && wv > 0 && hv > 0;
   const omtrek = valid ? hitungOmtrek(lv, wv, hv) : null;
   const over = omtrek !== null && !isNaN(tv) ? omtrek > tv : null;
   const breakdown = valid ? getBreakdown(lv, wv, hv) : null;
@@ -119,7 +146,7 @@ function SingleTab() {
     "w-full h-8 px-3 text-sm font-mono bg-white border border-edge rounded focus:outline-none focus:ring-2 focus:ring-accent/30";
 
   return (
-    <div className="max-w-sm">
+    <div className="max-w-2xl">
       <div className="bg-surface border border-edge rounded-lg overflow-hidden">
         <div className="px-4 py-2 border-b border-edge bg-panel">
           <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">
@@ -130,13 +157,13 @@ function SingleTab() {
         <div className="px-4 py-4 space-y-3">
           {(
             [
-              { label: "L (cm)", val: l, set: setL },
-              { label: "W (cm)", val: w, set: setW },
-              { label: "H (cm)", val: h, set: setH },
+              { label: "Packaging L (cm)", val: l, set: setL },
+              { label: "Packaging W (cm)", val: w, set: setW },
+              { label: "Packaging H (cm)", val: h, set: setH },
             ] as { label: string; val: string; set: (v: string) => void }[]
           ).map(({ label, val, set }) => (
             <div key={label} className="flex items-center gap-3">
-              <label className="text-xs font-mono text-muted w-16 shrink-0">
+              <label className="text-xs font-mono text-muted w-32 shrink-0">
                 {label}
               </label>
               <input
@@ -151,7 +178,7 @@ function SingleTab() {
 
           <div className="pt-2 border-t border-edge">
             <div className="flex items-center gap-3">
-              <label className="text-xs font-mono text-muted w-16 shrink-0">
+              <label className="text-xs font-mono text-muted w-32 shrink-0">
                 Limit (cm)
               </label>
               <input
@@ -180,7 +207,7 @@ function SingleTab() {
                   "flex items-center gap-2 px-3 py-2 rounded text-xs font-semibold",
                   over
                     ? "bg-red-50 text-red-600 border border-red-200"
-                    : "bg-green-50 text-green-700 border border-green-200"
+                    : "bg-green-50 text-green-700 border border-green-200",
                 )}
               >
                 {over ? "✗ Over limit" : "✓ Under limit"}
@@ -227,7 +254,7 @@ function SingleTab() {
         {!valid && (l || w || h) && (
           <div className="border-t border-edge px-4 py-3">
             <p className="text-xs text-muted">
-              Enter valid L, W, and H values (&gt; 0).
+              Enter valid Packaging L, W, and H values (&gt; 0).
             </p>
           </div>
         )}
@@ -258,7 +285,7 @@ function BulkTab() {
         ...r,
         overLimit: !isNaN(tv) ? r.omtrek > tv : false,
       })),
-    [rawResults, tv]
+    [rawResults, tv],
   );
 
   const summary = useMemo(() => {
@@ -283,7 +310,10 @@ function BulkTab() {
   }, [results, filter, sortCol, sortDir]);
 
   const lookup = useMemo(() => {
-    const tokens = skuQuery.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+    const tokens = skuQuery
+      .split(/[\s,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (tokens.length === 0) return null;
     const map = new Map(results.map((r) => [r.code.toLowerCase(), r]));
     const seen = new Set<string>();
@@ -308,9 +338,13 @@ function BulkTab() {
         sku,
         result?.description ?? "",
         result ? result.omtrek : "",
-        result ? (result.overLimit ? "Over Limit" : "Under Limit") : "Not Found",
+        result
+          ? result.overLimit
+            ? "Over Limit"
+            : "Under Limit"
+          : "Not Found",
       ]),
-      `omtrek-sku-lookup-${new Date().toISOString().slice(0, 10)}`
+      `omtrek-sku-lookup-${new Date().toISOString().slice(0, 10)}`,
     );
   }, [lookup]);
 
@@ -323,7 +357,7 @@ function BulkTab() {
         setSortDir("asc");
       }
     },
-    [sortCol]
+    [sortCol],
   );
 
   const onDrop = useCallback(
@@ -342,51 +376,56 @@ function BulkTab() {
         const parsed: OmtrekResult[] = [];
         let skipped = 0;
 
-        // Locate Class_04Description column (case-insensitive key match)
+        // Locate columns by normalized header match (case/whitespace-insensitive)
         const allKeys = rows.length > 0 ? Object.keys(rows[0]!) : [];
         const class04Col =
-          allKeys.find((k) => k.trim().toLowerCase() === "class_04description") ??
-          "Class_04Description";
+          findCol(allKeys, ["Class_04Description"]) ?? "Class_04Description";
+        const lCol = findCol(allKeys, ["Extra field: Packaging - L (cm)"]);
+        const wCol = findCol(allKeys, ["Extra field: Packaging - W (cm)"]);
+        const hCol = findCol(allKeys, ["Extra field: Packaging - H (cm)"]);
+        const codeCol = findCol(allKeys, CODE_HEADERS);
+        const descCol = findCol(allKeys, DESC_HEADERS);
+
+        if (!lCol || !wCol || !hCol) {
+          const missing = [
+            !lCol && "Extra field: Packaging - L (cm)",
+            !wCol && "Extra field: Packaging - W (cm)",
+            !hCol && "Extra field: Packaging - H (cm)",
+          ]
+            .filter(Boolean)
+            .join(", ");
+          setError(
+            `Missing dimension column(s): ${missing}. ` +
+              `Detected columns: ${allKeys.slice(0, 15).join(" | ")}` +
+              (allKeys.length > 15 ? " …" : ""),
+          );
+          return;
+        }
 
         // Required filter: only rows where Class_04Description matches "BB_Living" (case-insensitive)
         const bb_living = rows.filter(
-          (r) => String(r[class04Col] ?? "").trim().toLowerCase() === "bb_living"
+          (r) =>
+            String(r[class04Col] ?? "")
+              .trim()
+              .toLowerCase() === "bb_living",
         );
 
         if (bb_living.length === 0) {
-          const sample = rows.length > 0
-            ? `(sample value: "${String(rows[0]![class04Col] ?? "—").trim()}")`
-            : "";
+          const sample =
+            rows.length > 0
+              ? `(sample value: "${String(rows[0]![class04Col] ?? "—").trim()}")`
+              : "";
           setError(
             `No BB_Living rows found in this file. ` +
-            `Detected column: "${class04Col}" ${sample}.`
+              `Detected column: "${class04Col}" ${sample}.`,
           );
           return;
         }
 
         for (const row of bb_living) {
-          const lRaw =
-            row["Extra field:  Packaging - L (cm)"] ??
-            row["Extra field: Packaging - L (cm)"] ??
-            row["L (cm)"] ??
-            row["L"] ??
-            null;
-          const wRaw =
-            row["Extra field: Packaging - W (cm)"] ??
-            row["Extra field:  Packaging - W (cm)"] ??
-            row["W (cm)"] ??
-            row["W"] ??
-            null;
-          const hRaw =
-            row["Extra field:  Packaging - H (cm)"] ??
-            row["Extra field: Packaging - H (cm)"] ??
-            row["H (cm)"] ??
-            row["H"] ??
-            null;
-
-          const lv = parseNilai(lRaw);
-          const wv = parseNilai(wRaw);
-          const hv = parseNilai(hRaw);
+          const lv = parseNilai(row[lCol]);
+          const wv = parseNilai(row[wCol]);
+          const hv = parseNilai(row[hCol]);
 
           if (isNaN(lv) || isNaN(wv) || isNaN(hv)) {
             skipped++;
@@ -396,8 +435,8 @@ function BulkTab() {
           const omtrek = hitungOmtrek(lv, wv, hv);
           const thresholdVal = parseNilai(threshold);
           parsed.push({
-            code: String(row["Code"] ?? row["SKU"] ?? row["ItemCode"] ?? "").trim(),
-            description: String(row["Description"] ?? row["Name"] ?? row["Title"] ?? "").trim(),
+            code: codeCol ? String(row[codeCol] ?? "").trim() : "",
+            description: descCol ? String(row[descCol] ?? "").trim() : "",
             class04: String(row[class04Col] ?? "").trim(),
             l: lv,
             w: wv,
@@ -410,20 +449,27 @@ function BulkTab() {
         if (parsed.length === 0) {
           setError(
             `No valid rows from ${bb_living.length} BB_Living rows.` +
-            (skipped > 0 ? ` ${skipped} rows skipped (Packaging dimensions empty or invalid).` : "")
+              (skipped > 0
+                ? ` ${skipped} rows skipped (Packaging dimensions empty or invalid).`
+                : ""),
           );
         } else {
           setRawResults(parsed);
-          if (skipped > 0)
-            setWarning(`${skipped} BB_Living rows skipped due to invalid Packaging dimensions.`);
+          const notes = [
+            skipped > 0 &&
+              `${skipped} BB_Living rows skipped due to invalid Packaging dimensions.`,
+            !descCol && `No description column found (tried: ${DESC_HEADERS.join(", ")}).`,
+            !codeCol && `No code column found (tried: ${CODE_HEADERS.join(", ")}).`,
+          ].filter(Boolean);
+          if (notes.length > 0) setWarning(notes.join(" "));
         }
       } catch (err) {
         setError(
-          `Failed to read file: ${err instanceof Error ? err.message : String(err)}`
+          `Failed to read file: ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     },
-    [threshold]
+    [threshold],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -441,7 +487,16 @@ function BulkTab() {
     const overRows = results.filter((r) => r.overLimit);
     if (overRows.length === 0) return;
     exportToCsv(
-      ["Code", "Description", "Class_04Description", "L (cm)", "W (cm)", "H (cm)", "Omtrek (cm)", "Status"],
+      [
+        "Code",
+        "Description",
+        "Class_04Description",
+        "Packaging - L (cm)",
+        "Packaging - W (cm)",
+        "Packaging - H (cm)",
+        "Omtrek (cm)",
+        "Status",
+      ],
       overRows.map((r) => [
         r.code,
         r.description,
@@ -452,7 +507,7 @@ function BulkTab() {
         r.omtrek,
         "Over Limit",
       ]),
-      `omtrek-over-limit-${new Date().toISOString().slice(0, 10)}`
+      `omtrek-over-limit-${new Date().toISOString().slice(0, 10)}`,
     );
   }, [results]);
 
@@ -465,23 +520,81 @@ function BulkTab() {
     setSkuQuery("");
   }, []);
 
-  const columns = useMemo<ColumnDef<OmtrekResult>[]>(() => [
-    { id: "code", header: "Code", size: 130, meta: { cellClassName: "font-mono text-primary" } as VDTColumnMeta, cell: ({ row }) => row.original.code || "—" },
-    { id: "description", header: "Description", size: 220, meta: { cellClassName: "text-primary" } as VDTColumnMeta, cell: ({ row }) => row.original.description || "—" },
-    { id: "class04", header: "Class_04Description", size: 180, meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta, cell: ({ row }) => row.original.class04 },
-    { id: "l", header: "L (cm)", size: 90, meta: { cellClassName: "font-mono text-right" } as VDTColumnMeta, cell: ({ row }) => row.original.l.toFixed(1) },
-    { id: "w", header: "W (cm)", size: 90, meta: { cellClassName: "font-mono text-right" } as VDTColumnMeta, cell: ({ row }) => row.original.w.toFixed(1) },
-    { id: "h", header: "H (cm)", size: 90, meta: { cellClassName: "font-mono text-right" } as VDTColumnMeta, cell: ({ row }) => row.original.h.toFixed(1) },
-    { id: "omtrek", header: "Omtrek (cm)", size: 120, meta: { cellClassName: "font-mono font-semibold text-right" } as VDTColumnMeta, cell: ({ row }) => row.original.omtrek.toFixed(1) },
-    {
-      id: "__status", header: "Status", size: 100, meta: { sortable: false } as VDTColumnMeta,
-      cell: ({ row }) => (
-        <span className={cn("inline-block px-2 py-0.5 rounded text-[10px] font-semibold", row.original.overLimit ? "bg-red-100 text-red-600" : "bg-green-100 text-green-700")}>
-          {row.original.overLimit ? "Over" : "Under"}
-        </span>
-      ),
-    },
-  ], []);
+  const columns = useMemo<ColumnDef<OmtrekResult>[]>(
+    () => [
+      {
+        id: "code",
+        header: "Code",
+        size: 130,
+        meta: { cellClassName: "font-mono text-primary" } as VDTColumnMeta,
+        cell: ({ row }) => row.original.code || "—",
+      },
+      {
+        id: "description",
+        header: "Description",
+        size: 220,
+        maxSize: 420,
+        meta: { cellClassName: "text-primary" } as VDTColumnMeta,
+        cell: ({ row }) => row.original.description || "—",
+      },
+      {
+        id: "class04",
+        header: "Class_04Description",
+        size: 180,
+        meta: { cellClassName: "font-mono text-muted" } as VDTColumnMeta,
+        cell: ({ row }) => row.original.class04,
+      },
+      {
+        id: "l",
+        header: "Packaging L (cm)",
+        size: 170,
+        meta: { cellClassName: "font-mono text-right" } as VDTColumnMeta,
+        cell: ({ row }) => row.original.l.toFixed(1),
+      },
+      {
+        id: "w",
+        header: "Packaging W (cm)",
+        size: 170,
+        meta: { cellClassName: "font-mono text-right" } as VDTColumnMeta,
+        cell: ({ row }) => row.original.w.toFixed(1),
+      },
+      {
+        id: "h",
+        header: "Packaging H (cm)",
+        size: 170,
+        meta: { cellClassName: "font-mono text-right" } as VDTColumnMeta,
+        cell: ({ row }) => row.original.h.toFixed(1),
+      },
+      {
+        id: "omtrek",
+        header: "Omtrek (cm)",
+        size: 120,
+        meta: {
+          cellClassName: "font-mono font-semibold text-right",
+        } as VDTColumnMeta,
+        cell: ({ row }) => row.original.omtrek.toFixed(1),
+      },
+      {
+        id: "__status",
+        header: "Status",
+        size: 100,
+        meta: { sortable: false } as VDTColumnMeta,
+        cell: ({ row }) => (
+          <span
+            className={cn(
+              "inline-block px-2 py-0.5 rounded text-[10px] font-semibold",
+              row.original.overLimit
+                ? "bg-red-100 text-red-600"
+                : "bg-green-100 text-green-700",
+            )}
+          >
+            {row.original.overLimit ? "Over" : "Under"}
+          </span>
+        ),
+      },
+    ],
+    [],
+  );
 
   return (
     <div className="space-y-4">
@@ -516,7 +629,7 @@ function BulkTab() {
                     "px-2.5 h-6 text-[11px] font-semibold rounded transition-colors",
                     filter === val
                       ? "bg-white text-primary shadow-sm border border-edge"
-                      : "text-muted hover:text-primary"
+                      : "text-muted hover:text-primary",
                   )}
                 >
                   {label}
@@ -552,7 +665,7 @@ function BulkTab() {
           "border-2 border-dashed rounded-lg p-8 cursor-pointer transition-all duration-200 text-center select-none",
           isDragActive
             ? "border-accent bg-blue-50"
-            : "border-edge hover:border-accent/40 bg-surface"
+            : "border-edge hover:border-accent/40 bg-surface",
         )}
       >
         <input {...getInputProps()} />
@@ -560,7 +673,7 @@ function BulkTab() {
           size={22}
           className={cn(
             "mx-auto mb-2.5",
-            isDragActive ? "text-accent" : "text-muted"
+            isDragActive ? "text-accent" : "text-muted",
           )}
         />
         <p className="text-sm font-medium text-primary">
@@ -593,9 +706,15 @@ function BulkTab() {
       {results.length > 0 && totalFileRows > 0 && (
         <div className="flex items-center gap-2 px-3 py-2 bg-panel border border-edge rounded text-[11px] font-mono text-muted">
           <span>
-            From <span className="text-primary font-semibold">{totalFileRows.toLocaleString("en-US")}</span> total rows,{" "}
-            <span className="text-primary font-semibold">{results.length.toLocaleString("en-US")}</span> processed
-            {" "}(<span className="text-accent">BB_Living</span>)
+            From{" "}
+            <span className="text-primary font-semibold">
+              {totalFileRows.toLocaleString("en-US")}
+            </span>{" "}
+            total rows,{" "}
+            <span className="text-primary font-semibold">
+              {results.length.toLocaleString("en-US")}
+            </span>{" "}
+            processed (<span className="text-accent">BB_Living</span>)
           </span>
         </div>
       )}
@@ -618,7 +737,7 @@ function BulkTab() {
                   ? "border-green-200 bg-green-50/50"
                   : variant === "red"
                     ? "border-red-200 bg-red-50/50"
-                    : "border-edge bg-surface"
+                    : "border-edge bg-surface",
               )}
             >
               <p className="text-[11px] text-muted font-mono uppercase tracking-wide">
@@ -631,7 +750,7 @@ function BulkTab() {
                     ? "text-green-700"
                     : variant === "red"
                       ? "text-red-600"
-                      : "text-primary"
+                      : "text-primary",
                 )}
               >
                 {val.toLocaleString("en-US")}
@@ -708,7 +827,9 @@ function BulkTab() {
                       key={sku}
                       className="flex items-center gap-3 px-3 py-1.5 text-[11px] font-mono"
                     >
-                      <span className="text-primary flex-1 truncate">{sku}</span>
+                      <span className="text-primary flex-1 truncate">
+                        {sku}
+                      </span>
                       {result ? (
                         <>
                           {result.description && (
@@ -724,7 +845,7 @@ function BulkTab() {
                               "inline-block px-2 py-0.5 rounded text-[10px] font-semibold w-14 text-center shrink-0",
                               result.overLimit
                                 ? "bg-red-100 text-red-600"
-                                : "bg-green-100 text-green-700"
+                                : "bg-green-100 text-green-700",
                             )}
                           >
                             {result.overLimit ? "Over" : "Under"}
@@ -752,6 +873,7 @@ function BulkTab() {
             data={filtered}
             columns={columns}
             rowHeight={32}
+            stretchColumnId="description"
             fontSize="11px"
             cellPadding="6px 12px"
             headerPadding="0 12px"
@@ -770,7 +892,7 @@ function BulkTab() {
           <Ruler size={28} className="mx-auto text-muted/40 mb-3" />
           <p className="text-sm text-muted">Upload a CSV/XLSX file to get started</p>
           <p className="text-[11px] text-muted/60 mt-1 font-mono">
-            Required columns: Code, Description, L (cm), W (cm), H (cm)
+            Required columns: Code, Description, Extra field: Packaging - L/W/H (cm)
           </p>
         </div>
       )} */}
